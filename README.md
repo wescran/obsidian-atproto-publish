@@ -22,3 +22,16 @@ npm run typecheck
 npm run lex:pull       # goat lex pull --update at.markpub.
 npm run lex:generate   # lex-cli generate
 ```
+
+## Installing into a vault (development)
+
+```bash
+npm run build      # or `npm run dev` to rebuild on every change
+P="<vault>/.obsidian/plugins/cranlab-publish"
+mkdir -p "$P"
+ln -sfn "$PWD/main.js" "$P/main.js"
+ln -sfn "$PWD/manifest.json" "$P/manifest.json"
+```
+
+Then enable **CranLab Publish** under Settings → Community plugins. Its
+settings (`data.json`) stay in the vault's plugin folder, not in this repo.
