@@ -1,0 +1,22 @@
+{
+  "name": "cranlab-publish",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Obsidian plugin that publishes articles to an atproto PDS as site.standard.document records",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lex:pull": "goat lex pull --update at.markpub.",
+    "lex:generate": "lex-cli generate"
+  },
+  "devDependencies": {
+    "@atcute/lex-cli": "^3.3.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "@atcute/lexicons": "^2.1.1"
+  }
+}
