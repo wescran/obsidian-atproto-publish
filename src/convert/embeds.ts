@@ -1,15 +1,15 @@
-import { visit } from 'unist-util-visit';
-
-import { parseMarkdown } from './markdown.ts';
+import { inRanges, verbatimRanges } from './markdown.ts';
 
 /**
- * Obsidian-only syntax that has to be rewritten before a note can be published:
- * local images get uploaded and replaced with their blob URL, and wikilinks become
- * normal links (or plain text).
+ * Obsidian-only references that have to be rewritten before a note can be
+ * published: local images get uploaded and replaced with their blob URL, links
+ * to notes become normal links (or plain text), and other embedded files are
+ * published as their name.
  */
 export type Embed =
 	| { kind: 'image'; target: string; alt: string; raw: string }
-	| { kind: 'link'; target: string; text: string; raw: string };
+	| { kind: 'link'; target: string; text: string; raw: string }
+	| { kind: 'file'; target: string; text: string; raw: string };
 
 interface Match {
 	embed: Embed;
@@ -17,14 +17,25 @@ interface Match {
 	end: number;
 }
 
-// 1: ![[inner]]   2,3: ![alt](src "title")   4: [[inner]]
-const PATTERN = /!\[\[([^\]\n]+?)\]\]|!\[([^\]\n]*)\]\((<[^>\n]+>|[^)\s]+)(?:\s+"[^"\n]*")?\)|\[\[([^\]\n]+?)\]\]/g;
+const DESTINATION = String.raw`(<[^>\n]+>|[^)\s]+)(?:\s+"[^"\n]*")?`;
+const PATTERN = new RegExp(
+	[
+		String.raw`!\[\[([^\]\n]+?)\]\]`, // 1: ![[inner]]
+		String.raw`!\[([^\]\n]*)\]\(${DESTINATION}\)`, // 2, 3: ![alt](src)
+		String.raw`\[\[([^\]\n]+?)\]\]`, // 4: [[inner]]
+		String.raw`\[([^\]\n]*)\]\(${DESTINATION}\)`, // 5, 6: [text](href)
+	].join('|'),
+	'g',
+);
 
 const IMAGE_FILE = /\.(?:png|jpe?g|gif|webp|avif|svg|bmp)$/i;
-// Obsidian uses `![[img.png|300]]` / `|300x200` to size an image, not as alt text.
+// A note is linked without an extension, or with `.md`.
+const NOTE_FILE = /(?:^|\/)[^/.]+$|\.md$/i;
+// Obsidian uses `|300` / `|300x200` to size an image, not as alt text.
 const SIZE_ALIAS = /^\d+(?:x\d+)?$/;
 // Anything with a scheme (http:, data:, mailto:, …) or protocol-relative is not a vault file.
-const NOT_LOCAL = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+const HAS_SCHEME = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+const OBSIDIAN_URI = /^obsidian:/i;
 
 export function findEmbeds(markdown: string): Embed[] {
 	return scan(markdown).map((match) => match.embed);
@@ -41,37 +52,43 @@ export function replaceEmbeds(markdown: string, replace: (embed: Embed) => strin
 }
 
 function scan(markdown: string): Match[] {
-	const skip = codeRanges(markdown);
+	const skip = verbatimRanges(markdown);
 	const matches: Match[] = [];
 
 	for (const m of markdown.matchAll(PATTERN)) {
 		const start = m.index;
-		if (skip.some(([from, to]) => start >= from && start < to)) continue;
+		if (inRanges(skip, start)) continue;
 
 		const raw = m[0];
-		const embed = m[1] !== undefined ? obsidianEmbed(m[1], raw)
-			: m[3] !== undefined ? markdownImage(m[2] ?? '', m[3], raw)
-			: wikilink(m[4] ?? '', raw);
+		let embed: Embed | undefined;
+		if (m[1] !== undefined) embed = obsidianEmbed(m[1], raw);
+		else if (m[3] !== undefined) embed = markdownImage(m[2] ?? '', m[3], raw);
+		else if (m[4] !== undefined) embed = wikilink(m[4], raw);
+		else if (m[6] !== undefined) embed = markdownLink(m[5] ?? '', m[6], raw);
+
 		if (embed) matches.push({ embed, start, end: start + raw.length });
 	}
 	return matches;
 }
 
-/** `![[…]]`: an image file, or an embedded note, which is published as a link. */
+/** `![[…]]`: an image, an embedded note (published as a link), or another file. */
 function obsidianEmbed(inner: string, raw: string): Embed {
 	const { path, target, alias } = splitInner(inner);
 	if (IMAGE_FILE.test(path)) {
 		const alt = alias === undefined || SIZE_ALIAS.test(alias) ? '' : alias;
 		return { kind: 'image', target: path, alt, raw };
 	}
-	return { kind: 'link', target, text: alias ?? path, raw };
+	if (NOTE_FILE.test(target)) {
+		return { kind: 'link', target, text: alias ?? stripMd(path), raw };
+	}
+	return { kind: 'file', target, text: alias ?? path, raw };
 }
 
 /** `![alt](src)`: only local files. Remote images are already publishable. */
 function markdownImage(alt: string, src: string, raw: string): Embed | undefined {
-	const bare = src.startsWith('<') ? src.slice(1, -1) : src;
-	if (NOT_LOCAL.test(bare)) return undefined;
-	return { kind: 'image', target: safeDecode(bare), alt, raw };
+	const href = unwrap(src);
+	if (HAS_SCHEME.test(href)) return undefined;
+	return { kind: 'image', target: safeDecode(href), alt, raw };
 }
 
 /** `[[target#sub|alias]]` */
@@ -80,13 +97,37 @@ function wikilink(inner: string, raw: string): Embed {
 	return { kind: 'link', target, text: alias ?? path, raw };
 }
 
-/** `path` keeps any `#heading` / `#^block` subpath. `target` is the note to resolve. */
+/**
+ * `[text](href)`: a link to a vault note (how Obsidian writes links with
+ * "Use [[Wikilinks]]" turned off) or an `obsidian://` link. Web links and
+ * same-page anchors are left alone.
+ */
+function markdownLink(text: string, href: string, raw: string): Embed | undefined {
+	const bare = unwrap(href);
+	if (OBSIDIAN_URI.test(bare)) return { kind: 'link', target: '', text, raw };
+	if (HAS_SCHEME.test(bare) || bare.startsWith('#')) return undefined;
+	const target = safeDecode(bare).split('#')[0]?.trim() ?? '';
+	return { kind: 'link', target, text, raw };
+}
+
+/**
+ * Splits `target#sub|alias`. Inside a table Obsidian escapes the pipe as `\|`.
+ * `path` keeps any `#heading` / `#^block` subpath; `target` is what to resolve.
+ */
 function splitInner(inner: string): { path: string; target: string; alias: string | undefined } {
-	const bar = inner.indexOf('|');
-	const path = (bar === -1 ? inner : inner.slice(0, bar)).trim();
-	const alias = bar === -1 ? undefined : inner.slice(bar + 1).trim();
+	const bar = /\\?\|/.exec(inner);
+	const path = (bar ? inner.slice(0, bar.index) : inner).trim();
+	const alias = bar ? inner.slice(bar.index + bar[0].length).trim() : undefined;
 	const target = path.split('#')[0]?.trim() ?? '';
 	return { path, target, alias };
+}
+
+function unwrap(destination: string): string {
+	return destination.startsWith('<') ? destination.slice(1, -1) : destination;
+}
+
+function stripMd(path: string): string {
+	return path.replace(/\.md$/i, '');
 }
 
 function safeDecode(value: string): string {
@@ -95,16 +136,4 @@ function safeDecode(value: string): string {
 	} catch {
 		return value;
 	}
-}
-
-/** Offsets of code and raw HTML, where embed-like text must be left alone. */
-function codeRanges(markdown: string): Array<[number, number]> {
-	const ranges: Array<[number, number]> = [];
-	visit(parseMarkdown(markdown), (node) => {
-		if (node.type !== 'code' && node.type !== 'inlineCode' && node.type !== 'html') return;
-		const from = node.position?.start.offset;
-		const to = node.position?.end.offset;
-		if (from !== undefined && to !== undefined) ranges.push([from, to]);
-	});
-	return ranges;
 }

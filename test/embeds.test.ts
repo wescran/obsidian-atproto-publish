@@ -47,6 +47,48 @@ describe('findEmbeds', () => {
 		]);
 	});
 
+	it('drops a .md extension from an embedded note’s text', () => {
+		expect(findEmbeds('![[Other note.md]]')).toEqual([
+			{ kind: 'link', target: 'Other note.md', text: 'Other note', raw: '![[Other note.md]]' },
+		]);
+	});
+
+	it('reports embeds of other file types as files', () => {
+		expect(findEmbeds('![[doc.pdf]] ![[song.mp3|My song]] ![[board.canvas]]')).toEqual([
+			{ kind: 'file', target: 'doc.pdf', text: 'doc.pdf', raw: '![[doc.pdf]]' },
+			{ kind: 'file', target: 'song.mp3', text: 'My song', raw: '![[song.mp3|My song]]' },
+			{ kind: 'file', target: 'board.canvas', text: 'board.canvas', raw: '![[board.canvas]]' },
+		]);
+	});
+
+	it('handles the escaped pipe Obsidian writes inside table cells', () => {
+		expect(findEmbeds('| [[Other note\\|alias]] | ![[photo.png\\|100]] |\n|---|---|')).toEqual([
+			{ kind: 'link', target: 'Other note', text: 'alias', raw: '[[Other note\\|alias]]' },
+			{ kind: 'image', target: 'photo.png', alt: '', raw: '![[photo.png\\|100]]' },
+		]);
+	});
+
+	it('treats Markdown links to vault notes like wikilinks', () => {
+		expect(findEmbeds('[read](Other%20note.md#Part) and [also](<Other note.md>)')).toEqual([
+			{ kind: 'link', target: 'Other note.md', text: 'read', raw: '[read](Other%20note.md#Part)' },
+			{ kind: 'link', target: 'Other note.md', text: 'also', raw: '[also](<Other note.md>)' },
+		]);
+	});
+
+	it('turns obsidian:// links into unresolvable links (published as their text)', () => {
+		expect(findEmbeds('[open](obsidian://open?vault=x&file=y)')).toEqual([
+			{ kind: 'link', target: '', text: 'open', raw: '[open](obsidian://open?vault=x&file=y)' },
+		]);
+	});
+
+	it('leaves web links, mail links and same-page anchors alone', () => {
+		expect(findEmbeds('[a](https://x.y) [b](mailto:a@b.c) [c](#top)')).toEqual([]);
+	});
+
+	it('ignores embeds inside math', () => {
+		expect(findEmbeds('Inline $[[x]]$ and\n\n$$\n![[y.png]]\n$$')).toEqual([]);
+	});
+
 	it('ignores remote, data and mailto image targets', () => {
 		expect(findEmbeds('![a](http://e.com/a.png) ![b](data:image/png;base64,AA) ![c](mailto:x@y.z)')).toEqual([]);
 	});
