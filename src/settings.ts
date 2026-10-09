@@ -1,37 +1,34 @@
 import { type App, PluginSettingTab, SecretComponent, Setting } from 'obsidian';
 
-import type CranlabPublishPlugin from './main.ts';
+import type AtprotoPublishPlugin from './main.ts';
 
 export interface PublishSettings {
-	/** PDS base URL, e.g. https://weslandia.ca */
-	service: string;
-	/** Handle or DID used to log in */
+	/** Handle or DID to log in as. The PDS is found from it. */
 	identifier: string;
 	/** Name of the SecretStorage entry holding the app password (never the password itself) */
 	passwordSecret: string;
 	/** Vault folder whose notes can be published */
 	articlesFolder: string;
-	/** Public site URL that article paths are relative to */
-	siteUrl: string;
-	/** AT-URI of the site.standard.publication record */
+	/** Document path, relative to the publication URL. Must contain {slug}. */
+	pathTemplate: string;
+	/** AT-URI of the site.standard.publication record. Its `url` is the site URL. */
 	publicationUri: string;
 }
 
 export const DEFAULT_SETTINGS: PublishSettings = {
-	service: 'https://weslandia.ca',
-	identifier: 'cranlab.ca',
+	identifier: '',
 	passwordSecret: '',
 	articlesFolder: 'articles',
-	siteUrl: 'https://cranlab.ca',
+	pathTemplate: '/{slug}',
 	publicationUri: '',
 };
 
 type TextKey = Exclude<keyof PublishSettings, 'passwordSecret'>;
 
 export class PublishSettingTab extends PluginSettingTab {
-	plugin: CranlabPublishPlugin;
+	plugin: AtprotoPublishPlugin;
 
-	constructor(app: App, plugin: CranlabPublishPlugin) {
+	constructor(app: App, plugin: AtprotoPublishPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -40,8 +37,7 @@ export class PublishSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		this.addText('PDS URL', 'Where your account is hosted.', 'service');
-		this.addText('Handle', 'Your handle or DID.', 'identifier');
+		this.addText('Handle', 'Your atproto handle or DID, e.g. alice.example.com.', 'identifier', 'alice.example.com');
 
 		new Setting(containerEl)
 			.setName('App password')
@@ -53,18 +49,28 @@ export class PublishSettingTab extends PluginSettingTab {
 				}),
 			);
 
-		this.addText('Articles folder', 'Only notes in this folder can be published.', 'articlesFolder');
-		this.addText('Site URL', 'Public URL that article paths are relative to.', 'siteUrl');
-		this.addText('Publication', 'AT-URI of your site.standard.publication record.', 'publicationUri');
+		this.addText('Articles folder', 'Only notes in this folder can be published.', 'articlesFolder', 'articles');
+		this.addText(
+			'Path template',
+			'Where articles live on your site. Must contain {slug}, e.g. /articles/{slug}.',
+			'pathTemplate',
+			'/{slug}',
+		);
+		this.addText(
+			'Publication',
+			'AT-URI of your site.standard.publication record.',
+			'publicationUri',
+			'at://did:plc:…/site.standard.publication/…',
+		);
 	}
 
-	private addText(name: string, desc: string, key: TextKey): void {
+	private addText(name: string, desc: string, key: TextKey, placeholder: string): void {
 		new Setting(this.containerEl)
 			.setName(name)
 			.setDesc(desc)
 			.addText((text) =>
 				text
-					.setPlaceholder(DEFAULT_SETTINGS[key])
+					.setPlaceholder(placeholder)
 					.setValue(this.plugin.settings[key])
 					.onChange(async (value) => {
 						this.plugin.settings[key] = value.trim();

@@ -1,8 +1,8 @@
 {
-  "name": "cranlab-publish",
+  "name": "obsidian-atproto-publish",
   "version": "0.1.0",
   "private": true,
-  "description": "Obsidian plugin that publishes articles to an atproto PDS as site.standard.document records",
+  "description": "Obsidian plugin that publishes notes as standard.site documents on an atproto PDS",
   "type": "module",
   "scripts": {
     "dev": "node esbuild.config.mjs",

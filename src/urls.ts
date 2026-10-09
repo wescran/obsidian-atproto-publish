@@ -1,9 +1,16 @@
-export function articlePath(slug: string): string {
-	return `/articles/${slug}`;
+const SLUG = '{slug}';
+
+/** Turns a path template like `/articles/{slug}` into a document path. */
+export function expandPath(template: string, slug: string): string {
+	if (!template.includes(SLUG)) {
+		throw new Error(`Path template must contain ${SLUG}: ${template}`);
+	}
+	const path = template.replace(SLUG, slug).replace(/\/+$/, '');
+	return path.startsWith('/') ? path : `/${path}`;
 }
 
-export function articleUrl(siteUrl: string, slug: string): string {
-	return `${siteUrl.replace(/\/+$/, '')}${articlePath(slug)}`;
+export function joinUrl(siteUrl: string, path: string): string {
+	return `${siteUrl.replace(/\/+$/, '')}${path}`;
 }
 
 export function blobUrl(service: string, did: string, cid: string): string {

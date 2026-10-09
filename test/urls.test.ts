@@ -1,20 +1,32 @@
 import { describe, expect, it } from 'vitest';
 
-import { articlePath, articleUrl, blobUrl } from '../src/urls.ts';
+import { blobUrl, expandPath, joinUrl } from '../src/urls.ts';
 
-describe('articlePath', () => {
-	it('prefixes the slug with /articles/', () => {
-		expect(articlePath('welcome')).toBe('/articles/welcome');
+describe('expandPath', () => {
+	it('replaces {slug} in the template', () => {
+		expect(expandPath('/articles/{slug}', 'welcome')).toBe('/articles/welcome');
+	});
+
+	it('works with the default root template', () => {
+		expect(expandPath('/{slug}', 'welcome')).toBe('/welcome');
+	});
+
+	it('adds a missing leading slash and drops a trailing one', () => {
+		expect(expandPath('articles/{slug}/', 'welcome')).toBe('/articles/welcome');
+	});
+
+	it('rejects a template without {slug}', () => {
+		expect(() => expandPath('/articles/', 'welcome')).toThrow('{slug}');
 	});
 });
 
-describe('articleUrl', () => {
-	it('joins the site URL and the article path', () => {
-		expect(articleUrl('https://cranlab.ca', 'welcome')).toBe('https://cranlab.ca/articles/welcome');
+describe('joinUrl', () => {
+	it('joins a site URL and a path', () => {
+		expect(joinUrl('https://cranlab.ca', '/articles/welcome')).toBe('https://cranlab.ca/articles/welcome');
 	});
 
 	it('trims a trailing slash from the site URL', () => {
-		expect(articleUrl('https://cranlab.ca/', 'welcome')).toBe('https://cranlab.ca/articles/welcome');
+		expect(joinUrl('https://cranlab.ca/', '/articles/welcome')).toBe('https://cranlab.ca/articles/welcome');
 	});
 });
 

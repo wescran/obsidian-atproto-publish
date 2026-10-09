@@ -1,9 +1,9 @@
 {
-	"id": "cranlab-publish",
-	"name": "CranLab Publish",
+	"id": "atproto-publish",
+	"name": "ATproto Publish",
 	"version": "0.1.0",
 	"minAppVersion": "1.11.4",
-	"description": "Publish articles to an atproto PDS as standard.site documents.",
+	"description": "Deliberately publish notes as standard.site documents on your atproto PDS.",
 	"author": "Wesley Cranston",
 	"authorUrl": "https://cranlab.ca",
 	"isDesktopOnly": false
