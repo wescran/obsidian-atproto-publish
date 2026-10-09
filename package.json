@@ -15,12 +15,18 @@
   },
   "devDependencies": {
     "@atcute/lex-cli": "^3.3.0",
+    "@types/mdast": "^4.0.4",
     "esbuild": "^0.28.2",
     "obsidian": "^1.13.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },
   "dependencies": {
-    "@atcute/lexicons": "^2.1.1"
+    "@atcute/lexicons": "^2.1.1",
+    "mdast-util-from-markdown": "^2.1.0",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-to-string": "^4.0.0",
+    "micromark-extension-gfm": "^3.0.0",
+    "unist-util-visit": "^5.1.0"
   }
 }
