@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "@atcute/lex-cli": "^3.3.0",
+    "@standard-reader/renderer-core": "^0.4.0",
     "@types/mdast": "^4.0.4",
     "esbuild": "^0.28.2",
     "obsidian": "^1.13.1",
@@ -23,6 +24,7 @@
   },
   "dependencies": {
     "@atcute/lexicons": "^2.1.1",
+    "@atcute/standard-site": "^2.0.2",
     "mdast-util-from-markdown": "^2.1.0",
     "mdast-util-gfm": "^3.1.0",
     "mdast-util-math": "^3.0.0",

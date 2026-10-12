@@ -7,8 +7,8 @@ export interface PublishSettings {
 	identifier: string;
 	/** Name of the SecretStorage entry holding the app password (never the password itself) */
 	passwordSecret: string;
-	/** Vault folder whose notes can be published */
-	articlesFolder: string;
+	/** Vault folder whose notes can be published as a site.standard.document record*/
+	documentsFolder: string;
 	/** Document path, relative to the publication URL. Must contain {slug}. */
 	pathTemplate: string;
 	/** AT-URI of the site.standard.publication record. Its `url` is the site URL. */
@@ -18,7 +18,7 @@ export interface PublishSettings {
 export const DEFAULT_SETTINGS: PublishSettings = {
 	identifier: '',
 	passwordSecret: '',
-	articlesFolder: 'articles',
+	documentsFolder: 'documents',
 	pathTemplate: '/{slug}',
 	publicationUri: '',
 };
@@ -49,10 +49,10 @@ export class PublishSettingTab extends PluginSettingTab {
 				}),
 			);
 
-		this.addText('Articles folder', 'Only notes in this folder can be published.', 'articlesFolder', 'articles');
+		this.addText('Documents folder', 'Only notes in this folder can be published. Notes will be published as a site.standard.document record', 'documentsFolder', 'documents');
 		this.addText(
 			'Path template',
-			'Where articles live on your site. Must contain {slug}, e.g. /articles/{slug}.',
+			'Where documents live on your site. Must contain {slug}, e.g. /documents/{slug}.',
 			'pathTemplate',
 			'/{slug}',
 		);

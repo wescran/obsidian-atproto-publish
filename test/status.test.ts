@@ -1,0 +1,84 @@
+import { describe, expect, it } from 'vitest';
+
+import type { DocumentMeta } from '../src/convert/document.ts';
+import { fingerprint, publishStatus } from '../src/convert/status.ts';
+
+const META: DocumentMeta = {
+	title: 'Welcome',
+	description: 'About.',
+	tags: ['writing'],
+	slug: 'welcome',
+	date: '2026-09-28T00:00:00.000Z',
+	cover: 'cover.png',
+};
+const BODY = '# Hello\n\nWorld.';
+
+describe('fingerprint', () => {
+	it('is a 64-character hex SHA-256', async () => {
+		expect(await fingerprint(META, BODY)).toMatch(/^[0-9a-f]{64}$/);
+	});
+
+	it('is the same for the same content', async () => {
+		expect(await fingerprint(META, BODY)).toBe(await fingerprint({ ...META }, BODY));
+	});
+
+	it('does not depend on the order keys were added', async () => {
+		const reordered: DocumentMeta = {
+			cover: 'cover.png',
+			date: '2026-09-28T00:00:00.000Z',
+			slug: 'welcome',
+			tags: ['writing'],
+			description: 'About.',
+			title: 'Welcome',
+		};
+		expect(await fingerprint(reordered, BODY)).toBe(await fingerprint(META, BODY));
+	});
+
+	it.each([
+		['the body', META, `${BODY}!`],
+		['the title', { ...META, title: 'Hello' }, BODY],
+		['the description', { ...META, description: 'Other.' }, BODY],
+		['the tags', { ...META, tags: ['writing', 'life'] }, BODY],
+		['the slug', { ...META, slug: 'hello' }, BODY],
+		['the date', { ...META, date: '2026-10-01T00:00:00.000Z' }, BODY],
+		['the cover', { ...META, cover: 'other.png' }, BODY],
+	])('changes when %s changes', async (_field, meta, body) => {
+		expect(await fingerprint(meta, body)).not.toBe(await fingerprint(META, BODY));
+	});
+
+	it('ignores the link to the record', async () => {
+		const linked = { ...META, uri: 'at://did:plc:a/site.standard.document/1', publishedHash: 'ab12' };
+		expect(await fingerprint(linked, BODY)).toBe(await fingerprint(META, BODY));
+	});
+
+	it('treats a missing optional field the same as an absent one', async () => {
+		const { description: _description, ...withoutDescription } = META;
+		const withUndefined = { ...META, description: undefined };
+		expect(await fingerprint(withUndefined, BODY)).toBe(await fingerprint(withoutDescription, BODY));
+	});
+
+	it('distinguishes a missing field from an empty body', async () => {
+		const { cover: _cover, ...withoutCover } = META;
+		expect(await fingerprint(withoutCover, BODY)).not.toBe(await fingerprint(META, BODY));
+	});
+});
+
+describe('publishStatus', () => {
+	const URI = 'at://did:plc:a/site.standard.document/1';
+
+	it('is draft before the first publish', () => {
+		expect(publishStatus(META, 'abc')).toBe('draft');
+	});
+
+	it('is published when nothing changed since', () => {
+		expect(publishStatus({ ...META, uri: URI, publishedHash: 'abc' }, 'abc')).toBe('published');
+	});
+
+	it('is modified when the content changed since', () => {
+		expect(publishStatus({ ...META, uri: URI, publishedHash: 'abc' }, 'def')).toBe('modified');
+	});
+
+	it('is modified when there is no hash to compare with', () => {
+		expect(publishStatus({ ...META, uri: URI }, 'abc')).toBe('modified');
+	});
+});
