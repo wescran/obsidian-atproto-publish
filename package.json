@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@atcute/atproto": "^4.0.4",
+    "@atcute/cid": "^2.5.0",
     "@atcute/client": "^5.1.2",
     "@atcute/identity-resolver": "^2.0.3",
     "@atcute/lexicons": "^2.1.1",

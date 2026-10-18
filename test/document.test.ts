@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseDocumentMeta, PublishError } from '../src/convert/document.ts';
+import { parseDocumentMeta, parseDocumentUri, PublishError } from '../src/convert/document.ts';
 
 const URI = 'at://did:plc:abc123/site.standard.document/3mxd2abcdef22';
 
@@ -24,13 +24,21 @@ describe('parseDocumentMeta: title', () => {
 		expect(parseDocumentMeta({ title: '  Welcome  ' }, 'welcome').title).toBe('Welcome');
 	});
 
+	it('prefers the title property over the file name', () => {
+		expect(parseDocumentMeta({ title: 'Welcome!' }, 'welcome').title).toBe('Welcome!');
+	});
+
 	it.each([
 		['no frontmatter', undefined],
 		['empty frontmatter', {}],
 		['a blank title', { title: '   ' }],
 		['a non-string title', { title: 42 }],
-	])('refuses %s', (_case, frontmatter) => {
-		expect(errorFrom(frontmatter)).toMatch(/title/);
+	])('uses the file name, as Obsidian does, when there is %s', (_case, frontmatter) => {
+		expect(parseDocumentMeta(frontmatter, "3rd time's the charm").title).toBe("3rd time's the charm");
+	});
+
+	it('refuses a note with no title and a blank file name', () => {
+		expect(errorFrom({}, '   ')).toMatch(/title/);
 	});
 });
 
@@ -140,7 +148,7 @@ describe('parseDocumentMeta: cover', () => {
 
 describe('parseDocumentMeta: error messages', () => {
 	it.each([
-		['a missing title', {}, 'note'],
+		['no title at all', {}, '   '],
 		['a draft', { title: 'X', draft: true }, 'note'],
 		['an empty slug', { title: 'X' }, '日本語'],
 		['an unreadable date', { title: 'X', date: 'soon' }, 'note'],
@@ -174,5 +182,30 @@ describe('parseDocumentMeta: link to the record', () => {
 
 	it('leaves out keys that are not set', () => {
 		expect(Object.keys(parseDocumentMeta({ title: 'X' }, 'x')).sort()).toEqual(['slug', 'tags', 'title']);
+	});
+});
+
+describe('parseDocumentUri', () => {
+	it('returns a valid document URI', () => {
+		expect(parseDocumentUri(URI)).toBe(URI);
+	});
+
+	it('trims it', () => {
+		expect(parseDocumentUri(`  ${URI} `)).toBe(URI);
+	});
+
+	it.each([undefined, null, '', '   ', 42])('treats %j as no URI', (value) => {
+		expect(parseDocumentUri(value)).toBeUndefined();
+	});
+
+	it('refuses a URI that is not a document, mentioning atproto_uri', () => {
+		expect(() => parseDocumentUri('https://example.com/doc')).toThrow(PublishError);
+		expect(() => parseDocumentUri('https://example.com/doc')).toThrow(/atproto_uri/);
+	});
+
+	it('does not care about the rest of the note: drafts and untitled notes still have a URI', () => {
+		const frontmatter = { draft: true, atproto_uri: URI };
+		expect(() => parseDocumentMeta(frontmatter, 'x')).toThrow(PublishError);
+		expect(parseDocumentUri(frontmatter.atproto_uri)).toBe(URI);
 	});
 });

@@ -2,13 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import type { Embed } from '../src/convert/embeds.ts';
 import {
+	blobCid,
 	documentUri,
 	imageTargets,
 	isInFolder,
 	markPublished,
 	markUnpublished,
 	renderEmbed,
+	reusableBlob,
 	rkeyOf,
+	sameDocument,
 } from '../src/publish-steps.ts';
 
 const DID = 'did:plc:abc123';
@@ -142,5 +145,103 @@ describe('markUnpublished', () => {
 		const frontmatter: Record<string, unknown> = { title: 'Draft' };
 		markUnpublished(frontmatter);
 		expect(frontmatter).toEqual({ title: 'Draft' });
+	});
+});
+
+describe('blobCid', () => {
+	it('computes the CID a PDS gives the same bytes (CIDv1, raw, sha2-256)', async () => {
+		// Expected values computed independently (Node's crypto + base32), and the same
+		// algorithm matched a real PDS-assigned CID for an image in the dev vault.
+		expect(await blobCid(new TextEncoder().encode('cover'))).toBe(
+			'bafkreib7uqc2qma2zy2nchhujkawbafy6dsjush32belrlxrkq5iywf5wy',
+		);
+		expect(await blobCid(new TextEncoder().encode('image'))).toBe(
+			'bafkreidbaxlmy5vpiabsl2knlcgoken6lp63w45ug7ofd3fehel5pjb6hu',
+		);
+	});
+});
+
+describe('reusableBlob', () => {
+	const blobOf = (cid: string, mimeType = 'image/png') => ({ $type: 'blob' as const, ref: { $link: cid }, mimeType, size: 10 });
+	const ONE = 'bafkreidwslb22nkaxoadyaqlhlxgntmiq4jdenhkbrxhcq6avxlt75br5u';
+	const TWO = 'bafkreib7ytgp45cyodrmbwm7ohzq74dfnsg63va4yhl5hu3wwdn6nbpc6m';
+	const COVER = 'bafkreib7uqc2qma2zy2nchhujkawbafy6dsjush32belrlxrkq5iywf5wy';
+	const existing = {
+		imageBlobs: [{ image: blobOf(ONE) }, { image: blobOf(TWO, 'image/jpeg'), alt: 'two' }],
+		coverImage: blobOf(COVER, 'image/webp'),
+	};
+
+	it('finds an inline image already on the record, returning its whole blob', () => {
+		expect(reusableBlob(existing, TWO)).toEqual(blobOf(TWO, 'image/jpeg'));
+	});
+
+	it('finds the cover image', () => {
+		expect(reusableBlob(existing, COVER)).toEqual(blobOf(COVER, 'image/webp'));
+	});
+
+	it('returns undefined for an image the record does not have', () => {
+		expect(reusableBlob(existing, 'bafkreiglubvvonx26z7fjmd3kypk5fbzlz3uyul2pwiquvbwtyjghth32q')).toBeUndefined();
+	});
+
+	it('returns undefined when there is no existing record, or it has no images', () => {
+		expect(reusableBlob(undefined, ONE)).toBeUndefined();
+		expect(reusableBlob({}, ONE)).toBeUndefined();
+	});
+});
+
+describe('sameDocument', () => {
+	const base = {
+		$type: 'site.standard.document',
+		path: '/articles/x',
+		title: 'X',
+		tags: ['a', 'b'],
+		publishedAt: '2026-09-28T00:00:00.000Z',
+		content: { $type: 'at.markpub.markdown', flavor: 'gfm', text: { $type: 'at.markpub.text', markdown: '# X' } },
+		imageBlobs: [{ image: { $type: 'blob', ref: { $link: 'bafkreione' }, mimeType: 'image/png', size: 10 } }],
+	};
+	const clone = () => structuredClone(base) as Record<string, unknown>;
+
+	it('is true for identical records', () => {
+		expect(sameDocument(base, clone())).toBe(true);
+	});
+
+	it('ignores key order, at every level', () => {
+		const reordered = {
+			imageBlobs: [{ image: { size: 10, mimeType: 'image/png', ref: { $link: 'bafkreione' }, $type: 'blob' } }],
+			content: { text: { markdown: '# X', $type: 'at.markpub.text' }, flavor: 'gfm', $type: 'at.markpub.markdown' },
+			publishedAt: '2026-09-28T00:00:00.000Z',
+			tags: ['a', 'b'],
+			title: 'X',
+			path: '/articles/x',
+			$type: 'site.standard.document',
+		};
+		expect(sameDocument(base, reordered)).toBe(true);
+	});
+
+	it('ignores updatedAt, which only says when it was last written', () => {
+		expect(sameDocument({ ...base, updatedAt: '2026-10-01T00:00:00.000Z' }, { ...clone(), updatedAt: '2026-10-17T00:00:00.000Z' })).toBe(true);
+		expect(sameDocument({ ...base, updatedAt: '2026-10-01T00:00:00.000Z' }, clone())).toBe(true);
+	});
+
+	it.each([
+		['the body', (d: Record<string, unknown>) => ((d.content as { text: { markdown: string } }).text.markdown = '# Y')],
+		['the title', (d: Record<string, unknown>) => (d.title = 'Y')],
+		['the publish date', (d: Record<string, unknown>) => (d.publishedAt = '2026-09-29T00:00:00.000Z')],
+		['the order of tags', (d: Record<string, unknown>) => (d.tags = ['b', 'a'])],
+		['an image', (d: Record<string, unknown>) => ((d.imageBlobs as Array<{ image: { ref: { $link: string } } }>)[0]!.image.ref.$link = 'bafkreitwo')],
+		['an added field', (d: Record<string, unknown>) => (d.description = 'New.')],
+		['a removed field', (d: Record<string, unknown>) => delete d.tags],
+	])('is false when %s changed', (_change, change) => {
+		const changed = clone();
+		change(changed);
+		expect(sameDocument(base, changed)).toBe(false);
+	});
+
+	it('ignores keys set to undefined, which are dropped when the record is sent as JSON', () => {
+		expect(sameDocument(base, { ...clone(), coverImage: undefined })).toBe(true);
+	});
+
+	it('does not treat an empty list and an empty object as the same', () => {
+		expect(sameDocument({ ...base, tags: [] }, { ...clone(), tags: {} })).toBe(false);
 	});
 });

@@ -28,12 +28,32 @@ function optionalString(val: unknown): string | undefined {
 	return undefined;
 }
 /**
+ * A note's `atproto_uri` (the link to its record), or `undefined` when it has
+ * none. Only this is needed to unpublish, so it doesn't apply the publishing
+ * rules: drafts and untitled notes still have a URI. When present it must look
+ * like `at://<did>/site.standard.document/<rkey>`, otherwise `PublishError`
+ * mentioning `atproto_uri`.
+ */
+export function parseDocumentUri(value: unknown): string | undefined {
+	const uri = optionalString(value);
+	if (!uri) return undefined;
+	if (!/^at:\/\/did:[^/]+\/site\.standard\.document\/[^/]+$/.test(uri)) {
+		throw new PublishError(
+			`"atproto_uri" (${uri}) isn't a link to a standard.site document. Remove it to publish this note as a new document.`,
+		);
+	}
+	return uri;
+}
+
+/**
  * Reads a note's frontmatter (Obsidian's parsed properties, so values are
  * `unknown`) into a `DocumentMeta`, or throws a `PublishError` explaining what
  * to fix.
  *
  * Rules:
- * - `title`: required, a non-empty string after trimming. Error mentions `title`.
+ * - `title`: the `title` property when it's a non-empty string (trimmed),
+ *   otherwise the file name, which is what Obsidian shows as the note's
+ *   title. Both blank → error mentioning `title`.
  * - `draft: true` → error mentioning `draft`.
  * - `description`: optional string, trimmed. Omit it when empty.
  * - `tags`: a list or a single string. Trim each, strip a leading `#`, drop
@@ -58,7 +78,7 @@ export function parseDocumentMeta(frontmatter: Record<string, unknown> | undefin
 	const fm = frontmatter ?? {};
 	if (fm.draft === true) throw new PublishError('This note is marked "draft: true". Remove it, or set it to false, to publish.');
 
-	const title = optionalString(fm.title);
+	const title = optionalString(fm.title) || basename.trim();
 	if (!title) throw new PublishError('Add a "title" property to publish this note.');
 	
 	const tagList = Array.isArray(fm.tags) ? fm.tags : [fm.tags];
@@ -108,16 +128,8 @@ export function parseDocumentMeta(frontmatter: Record<string, unknown> | undefin
 	if (rawCover) docMeta.cover = rawCover.replace(/^!?\[\[([^|\]]*)(?:\|[^\]]*)?\]\]$/, '$1');
 
 	//at://<did>/site.standard.document/<rkey>
-	const rawUri = optionalString(fm.atproto_uri);
-	if (rawUri) {
-		if (/^at:\/\/did:[^/]+\/site\.standard\.document\/[^/]+$/.test(rawUri)) {
-			docMeta.uri = rawUri;
-		} else {
-			throw new PublishError(
-				`"atproto_uri" (${rawUri}) isn't a link to a standard.site document. Remove it to publish this note as a new document.`,
-			);
-		}
-	}
+	const uri = parseDocumentUri(fm.atproto_uri);
+	if (uri) docMeta.uri = uri;
 
 	const rawPubHash = optionalString(fm.published_hash);
 	if (rawPubHash) docMeta.publishedHash = rawPubHash;

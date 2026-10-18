@@ -1,13 +1,36 @@
 import { Plugin } from 'obsidian';
 
+import { Publisher } from './publisher.ts';
 import { DEFAULT_SETTINGS, type PublishSettings, PublishSettingTab } from './settings.ts';
 
 export default class AtprotoPublishPlugin extends Plugin {
 	settings: PublishSettings = { ...DEFAULT_SETTINGS };
+	readonly publisher = new Publisher(this);
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		this.addSettingTab(new PublishSettingTab(this.app, this));
+
+		this.addCommand({
+			id: 'publish',
+			name: 'Publish document',
+			checkCallback: (checking) => {
+				const file = this.app.workspace.getActiveFile();
+				if (!this.publisher.canPublish(file)) return false;
+				if (!checking) void this.publisher.run(() => this.publisher.publish(file));
+				return true;
+			},
+		});
+		this.addCommand({
+			id: 'unpublish',
+			name: 'Unpublish document',
+			checkCallback: (checking) => {
+				const file = this.app.workspace.getActiveFile();
+				if (!this.publisher.canPublish(file)) return false;
+				if (!checking) void this.publisher.run(() => this.publisher.unpublish(file));
+				return true;
+			},
+		});
 	}
 
 	async loadSettings(): Promise<void> {

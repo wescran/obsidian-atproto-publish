@@ -3,7 +3,12 @@
  * Obsidian and the network so they can be unit-tested. `publisher.ts` does
  * the reading, uploading and writing around them.
  */
+import { CODEC_RAW, create as createCid, toString as cidToString } from '@atcute/cid';
+import type { Blob } from '@atcute/lexicons';
+import { isBlob } from '@atcute/lexicons/interfaces';
+
 import type { Embed } from './convert/embeds.ts';
+import type { DocumentRecord } from './convert/record.ts';
 
 /**
  * Is the note at `path` inside `folder` (or a subfolder of it)? Paths are
@@ -121,4 +126,55 @@ export function markUnpublished(frontmatter: Record<string, unknown>): void {
 	delete frontmatter.published;
 	delete frontmatter.updated;
 	delete frontmatter.published_hash;
+}
+
+/**
+ * The CID a PDS will give these bytes when they're uploaded as a blob
+ * (CIDv1, raw codec, sha2-256). Lets the plugin tell whether an image is
+ * already on the record without uploading it.
+ */
+export async function blobCid(bytes: Uint8Array): Promise<string> {
+	return cidToString(await createCid(CODEC_RAW, bytes));
+}
+
+/**
+ * The blob already on the existing record (an inline image or the cover) with
+ * this CID, reusable as-is instead of uploading the same bytes again.
+ * Re-uploading an existing blob also leaves an orphaned temporary copy in the
+ * PDS's blob storage.
+ */
+export function reusableBlob(
+	existing: Pick<DocumentRecord, 'imageBlobs' | 'coverImage'> | undefined,
+	cid: string,
+): Blob | undefined {
+	const candidates = [existing?.coverImage, ...(existing?.imageBlobs ?? []).map((entry) => entry.image)];
+	return candidates.find((blob): blob is Blob => isBlob(blob) && blob.ref.$link === cid);
+}
+
+/**
+ * Would writing `next` change the record already on the PDS? Compares
+ * everything except `updatedAt` (which only says when it was last written),
+ * ignoring key order, since the PDS may return keys in a different order than
+ * they were sent.
+ */
+export function sameDocument(existing: object, next: object): boolean {
+	const { updatedAt: _existingUpdatedAt, ...a } = existing as Record<string, unknown>;
+	const { updatedAt: _nextUpdatedAt, ...b } = next as Record<string, unknown>;
+	return deepEqual(a, b);
+}
+
+/** Structural equality for JSON data: arrays in order, objects regardless of key order. */
+function deepEqual(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+	if (Array.isArray(a) !== Array.isArray(b)) return false;
+	if (Array.isArray(a) && Array.isArray(b)) {
+		return a.length === b.length && a.every((item, i) => deepEqual(item, b[i]));
+	}
+	const objectA = a as Record<string, unknown>;
+	const objectB = b as Record<string, unknown>;
+	// A key set to undefined isn't sent as JSON, so it's the same as no key.
+	const keysA = Object.keys(objectA).filter((key) => objectA[key] !== undefined);
+	const keysB = Object.keys(objectB).filter((key) => objectB[key] !== undefined);
+	return keysA.length === keysB.length && keysA.every((key) => deepEqual(objectA[key], objectB[key]));
 }
