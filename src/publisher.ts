@@ -50,7 +50,7 @@ import type { Blob } from '@atcute/lexicons';
 const ERROR_NOTICE_MS = 10_000;
 
 /** Everything the commands need about the note being published. */
-interface Note {
+export interface Note {
 	file: TFile;
 	frontmatter: Record<string, unknown> | undefined;
 	/** The note's text after its frontmatter. */
@@ -273,8 +273,12 @@ export class Publisher {
 		new Notice(`Unpublished "${title}" from ${new URL(session.account.pds).host}.`);
 	}
 
-	/** Frontmatter from `metadataCache.getFileCache(file)?.frontmatter`; body from `vault.read` after `getFrontMatterInfo(…).contentStart`. */
-	private async readNote(file: TFile): Promise<Note> {
+	/**
+	 * The note's properties (parsed from the file's own text, so they always
+	 * match the body) and the body after them. Also used by the status bar, so
+	 * both compute the same fingerprint. Broken YAML → `PublishError`.
+	 */
+	async readNote(file: TFile): Promise<Note> {
 		const text = await this.app.vault.read(file);
 		const info = getFrontMatterInfo(text);
 		const frontmatter = info.exists ? parseFrontmatter(info.frontmatter) : undefined;

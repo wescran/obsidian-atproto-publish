@@ -40,3 +40,30 @@ export function publishStatus(meta: DocumentMeta, currentHash: string): PublishS
 	if (meta.publishedHash === currentHash) return 'published';
 	return 'modified';
 }
+
+/**
+ * The status of a note as it is now, for the status bar. Takes the note the
+ * way `Publisher.readNote` returns it, so the fingerprint is computed exactly
+ * as `publish()` computes it.
+ *
+ * - `parseDocumentMeta(frontmatter, basename)`, then
+ *   `publishStatus(meta, await fingerprint(meta, body))`.
+ * - The note can't be published as it is (`parseDocumentMeta` throws a
+ *   `PublishError`: `draft: true`, a malformed property, …):
+ *   - it has an `atproto_uri` (a non-blank string) → `modified`: the published
+ *     version no longer matches the note.
+ *   - otherwise → `draft`.
+ * - Any other error is a bug: let it through.
+ */
+export async function noteStatus(
+	frontmatter: Record<string, unknown> | undefined,
+	basename: string,
+	body: string,
+): Promise<PublishStatus> {
+	throw new Error('Not implemented: noteStatus');
+}
+
+/** The status bar text: `Draft`, `Published`, or `Published · edited` (a middle dot, U+00B7). */
+export function statusLabel(status: PublishStatus): string {
+	throw new Error('Not implemented: statusLabel');
+}

@@ -31,6 +31,11 @@ export default class AtprotoPublishPlugin extends Plugin {
 				return true;
 			},
 		});
+
+		// TODO (Task 8): create the status bar and wire it up:
+		//   new StatusBar(this).register();
+		// (import it from './status-bar.ts'). Keep it in a field if you'd like to
+		// refresh it from elsewhere later, e.g. when the documents folder setting changes.
 	}
 
 	async loadSettings(): Promise<void> {
