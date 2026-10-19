@@ -50,6 +50,24 @@ describe('parseDocumentMeta: draft', () => {
 	it('allows draft: false', () => {
 		expect(parseDocumentMeta({ title: 'X', draft: false }, 'x').title).toBe('X');
 	});
+
+	it.each(['true', 'TRUE', ' True '])(
+		'refuses draft: %j, which Obsidian writes when the property type is Text',
+		(draft) => {
+			expect(errorFrom({ title: 'X', draft })).toMatch(/draft: true/);
+		},
+	);
+
+	it.each(['false', 'FALSE', ' False ', '', '  ', null])('allows draft: %j', (draft) => {
+		expect(parseDocumentMeta({ title: 'X', draft }, 'x').title).toBe('X');
+	});
+
+	it.each(['yes', 'no', 1, 0, ['true'], { draft: true }])(
+		'refuses an unclear draft value (%j), asking for a checkbox',
+		(draft) => {
+			expect(errorFrom({ title: 'X', draft })).toMatch(/"draft".*checkbox/);
+		},
+	);
 });
 
 describe('parseDocumentMeta: description', () => {

@@ -1,4 +1,4 @@
-import type { DocumentMeta } from './document.ts';
+import { type DocumentMeta, parseDocumentMeta, PublishError } from './document.ts';
 
 export type PublishStatus = 'draft' | 'published' | 'modified';
 
@@ -60,10 +60,25 @@ export async function noteStatus(
 	basename: string,
 	body: string,
 ): Promise<PublishStatus> {
-	throw new Error('Not implemented: noteStatus');
+	let docMeta: DocumentMeta;
+	try {
+		docMeta = parseDocumentMeta(frontmatter, basename);
+	} catch (error) {
+		if (!(error instanceof PublishError)) throw error;
+		const uri = frontmatter?.atproto_uri;
+		return typeof uri === 'string' && uri.trim() ? 'modified' : 'draft';
+	}
+	return publishStatus(docMeta, await fingerprint(docMeta, body));
 }
 
 /** The status bar text: `Draft`, `Published`, or `Published · edited` (a middle dot, U+00B7). */
 export function statusLabel(status: PublishStatus): string {
-	throw new Error('Not implemented: statusLabel');
+	switch (status) {
+		case 'draft':
+			return 'Draft';
+		case 'published':
+			return 'Published';
+		case 'modified':
+			return 'Published · edited';
+	}
 }

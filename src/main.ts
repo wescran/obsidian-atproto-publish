@@ -2,6 +2,7 @@ import { Plugin } from 'obsidian';
 
 import { Publisher } from './publisher.ts';
 import { DEFAULT_SETTINGS, type PublishSettings, PublishSettingTab } from './settings.ts';
+import { StatusBar } from './status-bar.ts';
 
 export default class AtprotoPublishPlugin extends Plugin {
 	settings: PublishSettings = { ...DEFAULT_SETTINGS };
@@ -32,10 +33,7 @@ export default class AtprotoPublishPlugin extends Plugin {
 			},
 		});
 
-		// TODO (Task 8): create the status bar and wire it up:
-		//   new StatusBar(this).register();
-		// (import it from './status-bar.ts'). Keep it in a field if you'd like to
-		// refresh it from elsewhere later, e.g. when the documents folder setting changes.
+		new StatusBar(this).register();
 	}
 
 	async loadSettings(): Promise<void> {

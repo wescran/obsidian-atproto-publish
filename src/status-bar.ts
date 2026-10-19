@@ -1,5 +1,6 @@
 import { debounce } from 'obsidian';
 
+import { PublishError } from './convert/document.ts';
 import { noteStatus, statusLabel } from './convert/status.ts';
 import type AtprotoPublishPlugin from './main.ts';
 
@@ -13,6 +14,7 @@ const REFRESH_DELAY_MS = 500;
  */
 export class StatusBar {
 	private readonly el: HTMLElement;
+	private refreshes = 0;
 
 	constructor(private readonly plugin: AtprotoPublishPlugin) {
 		this.el = plugin.addStatusBarItem();
@@ -37,7 +39,25 @@ export class StatusBar {
 	 * 6. `refresh()` once, for the note that's open when the plugin loads.
 	 */
 	register(): void {
-		throw new Error('Not implemented: StatusBar.register');
+		this.el.addClass('mod-clickable');
+		this.plugin.registerDomEvent(this.el, 'click', () => {
+			const file = this.plugin.app.workspace.getActiveFile();
+			if (this.plugin.publisher.canPublish(file)) {
+				void this.plugin.publisher.run(() => this.plugin.publisher.publish(file));
+			}
+		});
+		this.plugin.registerEvent(
+			this.plugin.app.workspace.on('active-leaf-change', () => {
+				void this.refresh();
+			}),
+		);
+		const refreshSoon = debounce(() => void this.refresh(), REFRESH_DELAY_MS, true);
+		this.plugin.registerEvent(
+			this.plugin.app.metadataCache.on('changed', (file) => {
+				if (file === this.plugin.app.workspace.getActiveFile()) refreshSoon();
+			}),
+		);
+		void this.refresh();
 	}
 
 	/**
@@ -56,7 +76,23 @@ export class StatusBar {
 	 *   started after it.
 	 */
 	async refresh(): Promise<void> {
-		throw new Error('Not implemented: StatusBar.refresh');
+		const call = ++this.refreshes;
+		const file = this.plugin.app.workspace.getActiveFile();
+		if (!this.plugin.publisher.canPublish(file)) {
+			this.el.hide();
+			return;
+		}
+		try {
+			const note = await this.plugin.publisher.readNote(file);
+			if (call !== this.refreshes) return;
+			const status = await noteStatus(note.frontmatter, file.basename, note.body);
+			if (call !== this.refreshes) return;
+			this.el.setText(statusLabel(status));
+			this.el.show();
+		} catch (error) {
+			if (!(error instanceof PublishError)) console.error('ATproto Publish:', error);
+			if (call === this.refreshes) this.el.hide();
+		}
 	}
 }
 

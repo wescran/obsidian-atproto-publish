@@ -23,6 +23,17 @@ export interface DocumentMeta {
 	publishedHash?: string;
 }
 
+function isDraft(value: unknown): boolean {
+	if (typeof value === 'boolean') return value;
+	if (value === undefined || value === null) return false;
+	const text = typeof value === 'string' ? value.trim().toLowerCase() : undefined;
+	if (text === 'true') return true;
+	if (text === 'false' || text === '') return false;
+	throw new PublishError(
+		'"draft" should be a checkbox (true or false). In the Properties panel, change its type to Checkbox.',
+	);
+}
+
 function optionalString(val: unknown): string | undefined {
 	if (typeof val === 'string') return val.trim();
 	return undefined;
@@ -54,7 +65,10 @@ export function parseDocumentUri(value: unknown): string | undefined {
  * - `title`: the `title` property when it's a non-empty string (trimmed),
  *   otherwise the file name, which is what Obsidian shows as the note's
  *   title. Both blank → error mentioning `title`.
- * - `draft: true` → error mentioning `draft`.
+ * - `draft`: a checkbox, but also accepted as text (`"true"`/`"false"`, any
+ *   case, trimmed), which Obsidian writes when the property's type is Text.
+ *   True → error mentioning `draft: true`. False, empty or absent → not a
+ *   draft. Anything else → error asking for a checkbox.
  * - `description`: optional string, trimmed. Omit it when empty.
  * - `tags`: a list or a single string. Trim each, strip a leading `#`, drop
  *   empty and non-string entries, remove duplicates (keep first). Missing → `[]`.
@@ -76,7 +90,7 @@ export function parseDocumentUri(value: unknown): string | undefined {
  */
 export function parseDocumentMeta(frontmatter: Record<string, unknown> | undefined, basename: string): DocumentMeta {
 	const fm = frontmatter ?? {};
-	if (fm.draft === true) throw new PublishError('This note is marked "draft: true". Remove it, or set it to false, to publish.');
+	if (isDraft(fm.draft)) throw new PublishError('This note is marked "draft: true". Remove it, or set it to false, to publish.');
 
 	const title = optionalString(fm.title) || basename.trim();
 	if (!title) throw new PublishError('Add a "title" property to publish this note.');
