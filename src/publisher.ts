@@ -106,9 +106,10 @@ export class Publisher {
 	 *    `getPublication(publicClient(<the publication owner's PDS>), settings.publicationUri)`.
 	 *    The owner's PDS is your own when the publication URI's DID is your DID;
 	 *    otherwise `resolveAccount(<that DID>)` first.
-	 * 3. `listDocuments` → `checkPath(records, path, meta.uri)`:
-	 *    - `conflict` → `PublishError` naming the other record.
-	 *    - `relink` → `confirmRelink(app, path, uri)`; yes → use that `uri`, no → stop quietly.
+	 * 3. `listDocuments` → `checkPath(records, path, meta.uri, <another note links to it>)`:
+	 *    - `conflict` → `PublishError` naming the other document by its title,
+	 *      and the note linked to it when there is one.
+	 *    - `relink` → `confirmRelink(app, title)`; yes → use that `uri`, no → stop quietly.
 	 * 4. No `uri` yet → `rkey = newTid()`, `uri = documentUri(did, rkey)`, and
 	 *    **write `atproto_uri` and `slug` to the frontmatter now**
 	 *    (`app.fileManager.processFrontMatter`), before any write to the PDS.
@@ -143,14 +144,16 @@ export class Publisher {
 		const publication = await getPublication(publicClient(session.account.pds), this.plugin.settings.publicationUri);
 		const docs = await listDocuments(session.rpc, session.account.did);
 		let docUri = docMeta.uri;
-		const pathCheck = checkPath(docs, filePath, docUri);
+		const pathCheck = checkPath(docs, filePath, docUri, (uri) => this.linkedNote(uri, file) !== undefined);
 		if (pathCheck.kind === 'conflict') {
+			const owner = this.linkedNote(pathCheck.uri, file);
+			const usedBy = owner ? `"${pathCheck.title}" (note: ${owner.basename})` : `"${pathCheck.title}"`;
 			throw new PublishError(
-				`Another document already uses ${filePath} (${pathCheck.uri}). Change this note's "slug" to publish it at a different URL.`,
+				`This note's slug "${docMeta.slug}" is already used by ${usedBy}. Change this note's "slug" to publish it separately.`,
 			);
 		}
 		if (pathCheck.kind === 'relink') {
-			if (!(await confirmRelink(this.app, filePath, pathCheck.uri))) {
+			if (!(await confirmRelink(this.app, pathCheck.title))) {
 				return;
 			}
 			docUri = pathCheck.uri;
@@ -324,6 +327,15 @@ export class Publisher {
 		existing: DocumentRecord | undefined,
 	): Promise<Blob> {
 		return reusableBlob(existing, await blobCid(bytes)) ?? (await uploadImage(rpc, bytes, mimeType));
+	}
+
+	/** The note, other than `except`, whose `atproto_uri` is this record, if any. */
+	private linkedNote(uri: string, except: TFile): TFile | undefined {
+		return this.app.vault.getMarkdownFiles().find((candidate) => {
+			if (candidate === except) return false;
+			const linked: unknown = this.app.metadataCache.getFileCache(candidate)?.frontmatter?.atproto_uri;
+			return typeof linked === 'string' && linked.trim() === uri;
+		});
 	}
 
 	/** A vault file for a link or embed target, relative to `from`: `app.metadataCache.getFirstLinkpathDest(target, from.path)`. */

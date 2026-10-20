@@ -1,13 +1,14 @@
 import { type App, Modal, Setting } from 'obsidian';
 
 /**
- * Asks whether to link a note that has no `atproto_uri` to the document that
- * already exists at its path (it probably lost the link). Resolves `true` for
+ * Asks whether to link a note that has no `atproto_uri` to the document,
+ * named by its `title`, that already uses its slug and that no other note
+ * links to (the note probably lost the link). Resolves `true` for
  * "Link and update", `false` for "Cancel" **or closing the dialog** (Escape,
  * clicking outside), and never resolves twice.
  */
-export function confirmRelink(app: App, path: string, uri: string): Promise<boolean> {
-	return new Promise((resolve) => new RelinkModal(app, path, uri, resolve).open());
+export function confirmRelink(app: App, title: string): Promise<boolean> {
+	return new Promise((resolve) => new RelinkModal(app, title, resolve).open());
 }
 
 class RelinkModal extends Modal {
@@ -16,24 +17,20 @@ class RelinkModal extends Modal {
 
 	constructor(
 		app: App,
-		private readonly path: string,
-		private readonly uri: string,
+		private readonly title: string,
 		private readonly resolve: (link: boolean) => void,
 	) {
 		super(app);
 	}
 
 	override onOpen(): void {
-		this.setTitle('Link to the existing document?');
+		this.setTitle(`Link to "${this.title}"?`);
 
-		const { contentEl } = this;
-		contentEl.createEl('p', {
-			text: `A document is already published at ${this.path}, but this note has no "atproto_uri" linking to it. It may have lost the link, for example after being copied or recreated.`,
+		this.contentEl.createEl('p', {
+			text: `"${this.title}" is already published with this note's slug, but no note in your vault is linked to it. If this note is its source (for example, it was copied or recreated), link them and update the published document with this note's content.`,
 		});
-		contentEl.createEl('p', { text: 'Link this note to that document and update it with this note’s content?' });
-		contentEl.createEl('p', { text: this.uri, cls: 'setting-item-description' });
 
-		new Setting(contentEl)
+		new Setting(this.contentEl)
 			.addButton((button) => button.setButtonText('Cancel').onClick(() => this.answer(false)))
 			.addButton((button) =>
 				button

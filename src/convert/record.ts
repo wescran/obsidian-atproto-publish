@@ -115,30 +115,34 @@ export function mergeForUpdate(existing: DocumentRecord | undefined, next: Docum
 	return { ...kept, ...next, publishedAt: existing.publishedAt, updatedAt: next.publishedAt } as DocumentRecord;
 }
 
-export type PathCheck = { kind: 'ok' } | { kind: 'relink'; uri: string } | { kind: 'conflict'; uri: string };
+export type PathCheck =
+	| { kind: 'ok' }
+	| { kind: 'relink'; uri: string; title: string }
+	| { kind: 'conflict'; uri: string; title: string };
 
 /**
- * Is `path` free for this note?
+ * Is `path` free for this note? `isClaimed(uri)` says whether another note in
+ * the vault links to that record (has it as its `atproto_uri`).
  *
  * - No other record has `path`, or the one that does is `ownUri` → `ok`.
- * - The note has no `ownUri` yet and a record has `path` → `relink` to it
- *   (the note probably lost its `atproto_uri`).
- * - The note has an `ownUri` and a *different* record has `path` → `conflict`.
+ * - The note has no `ownUri` yet, a record has `path`, and no note claims
+ *   that record → `relink` to it (the note probably lost its `atproto_uri`).
+ * - Otherwise (the note has a different `ownUri`, or another note still links
+ *   to the record) → `conflict`.
+ *
+ * `relink` and `conflict` carry the record's `title` (trimmed; its path when
+ * it has none), so messages can name the document the way the author knows it.
  */
 export function checkPath(
-	records: Array<{ uri: string; value: { path?: string } }>,
+	records: Array<{ uri: string; value: { path?: string; title?: string } }>,
 	path: string,
 	ownUri: string | undefined,
+	isClaimed: (uri: string) => boolean,
 ): PathCheck {
-	for (const record of records) {
-		if (record.value.path === path) {
-			if (ownUri === undefined) {
-				return {kind: 'relink', uri: record.uri};
-			}
-			if (ownUri !== record.uri) {
-				return {kind: 'conflict', uri: record.uri};
-			}
-		}
-	}
-	return {kind: 'ok'};
+	const existing = records.find((record) => record.value.path === path && record.uri !== ownUri);
+	if (!existing) return { kind: 'ok' };
+
+	const title = existing.value.title?.trim() || path;
+	if (ownUri === undefined && !isClaimed(existing.uri)) return { kind: 'relink', uri: existing.uri, title };
+	return { kind: 'conflict', uri: existing.uri, title };
 }

@@ -149,36 +149,68 @@ describe('mergeForUpdate', () => {
 });
 
 describe('checkPath', () => {
+	const ONE = 'at://did:plc:a/site.standard.document/1';
+	const TWO = 'at://did:plc:a/site.standard.document/2';
 	const records = [
-		{ uri: 'at://did:plc:a/site.standard.document/1', value: { path: '/articles/one' } },
-		{ uri: 'at://did:plc:a/site.standard.document/2', value: { path: '/articles/two' } },
-		{ uri: 'at://did:plc:a/site.standard.document/3', value: {} },
+		{ uri: ONE, value: { path: '/articles/one', title: 'One' } },
+		{ uri: TWO, value: { path: '/articles/two', title: 'Two' } },
+		{ uri: 'at://did:plc:a/site.standard.document/3', value: { title: 'No path' } },
 	];
+	const unclaimed = () => false;
 
 	it('is ok when the path is this note’s own record', () => {
-		expect(checkPath(records, '/articles/one', 'at://did:plc:a/site.standard.document/1')).toEqual({ kind: 'ok' });
+		expect(checkPath(records, '/articles/one', ONE, unclaimed)).toEqual({ kind: 'ok' });
 	});
 
 	it('is ok when no record has the path', () => {
-		expect(checkPath(records, '/articles/new', undefined)).toEqual({ kind: 'ok' });
-		expect(checkPath(records, '/articles/new', 'at://did:plc:a/site.standard.document/9')).toEqual({ kind: 'ok' });
+		expect(checkPath(records, '/articles/new', undefined, unclaimed)).toEqual({ kind: 'ok' });
+		expect(checkPath(records, '/articles/new', 'at://did:plc:a/site.standard.document/9', unclaimed)).toEqual({ kind: 'ok' });
 	});
 
-	it('offers to re-link a note without a record', () => {
-		expect(checkPath(records, '/articles/two', undefined)).toEqual({
-			kind: 'relink',
-			uri: 'at://did:plc:a/site.standard.document/2',
+	it('is ok with no records at all', () => {
+		expect(checkPath([], '/articles/one', undefined, unclaimed)).toEqual({ kind: 'ok' });
+	});
+
+	it('offers to re-link a note without a record when no note claims the existing one', () => {
+		expect(checkPath(records, '/articles/two', undefined, unclaimed)).toEqual({ kind: 'relink', uri: TWO, title: 'Two' });
+	});
+
+	it('asks whether the existing record is claimed, by its URI', () => {
+		const asked: string[] = [];
+		checkPath(records, '/articles/two', undefined, (uri) => {
+			asked.push(uri);
+			return false;
+		});
+		expect(asked).toEqual([TWO]);
+	});
+
+	it('reports a conflict, not a re-link, when another note still links to the existing record', () => {
+		expect(checkPath(records, '/articles/two', undefined, (uri) => uri === TWO)).toEqual({
+			kind: 'conflict',
+			uri: TWO,
+			title: 'Two',
 		});
 	});
 
 	it('reports a conflict with another note’s record', () => {
-		expect(checkPath(records, '/articles/two', 'at://did:plc:a/site.standard.document/1')).toEqual({
-			kind: 'conflict',
-			uri: 'at://did:plc:a/site.standard.document/2',
-		});
+		expect(checkPath(records, '/articles/two', ONE, unclaimed)).toEqual({ kind: 'conflict', uri: TWO, title: 'Two' });
+		expect(checkPath(records, '/articles/two', ONE, () => true)).toEqual({ kind: 'conflict', uri: TWO, title: 'Two' });
 	});
 
-	it('is ok with no records at all', () => {
-		expect(checkPath([], '/articles/one', undefined)).toEqual({ kind: 'ok' });
+	it('reports another record with the same path even when this note’s own record comes first', () => {
+		const both = [
+			{ uri: ONE, value: { path: '/articles/two', title: 'One' } },
+			{ uri: TWO, value: { path: '/articles/two', title: 'Two' } },
+		];
+		expect(checkPath(both, '/articles/two', ONE, unclaimed)).toEqual({ kind: 'conflict', uri: TWO, title: 'Two' });
+	});
+
+	it('falls back to the path when the existing record has no usable title', () => {
+		const untitled = [
+			{ uri: TWO, value: { path: '/articles/two' } },
+			{ uri: ONE, value: { path: '/articles/one', title: '   ' } },
+		];
+		expect(checkPath(untitled, '/articles/two', undefined, unclaimed)).toEqual({ kind: 'relink', uri: TWO, title: '/articles/two' });
+		expect(checkPath(untitled, '/articles/one', undefined, unclaimed)).toEqual({ kind: 'relink', uri: ONE, title: '/articles/one' });
 	});
 });
