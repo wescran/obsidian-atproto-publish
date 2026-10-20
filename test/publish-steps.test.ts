@@ -162,7 +162,12 @@ describe('blobCid', () => {
 });
 
 describe('reusableBlob', () => {
-	const blobOf = (cid: string, mimeType = 'image/png') => ({ $type: 'blob' as const, ref: { $link: cid }, mimeType, size: 10 });
+	const blobOf = (cid: string, mimeType = 'image/png') => ({
+		$type: 'blob' as const,
+		ref: { $link: cid },
+		mimeType,
+		size: 10,
+	});
 	const ONE = 'bafkreidwslb22nkaxoadyaqlhlxgntmiq4jdenhkbrxhcq6avxlt75br5u';
 	const TWO = 'bafkreib7ytgp45cyodrmbwm7ohzq74dfnsg63va4yhl5hu3wwdn6nbpc6m';
 	const COVER = 'bafkreib7uqc2qma2zy2nchhujkawbafy6dsjush32belrlxrkq5iywf5wy';
@@ -219,7 +224,12 @@ describe('sameDocument', () => {
 	});
 
 	it('ignores updatedAt, which only says when it was last written', () => {
-		expect(sameDocument({ ...base, updatedAt: '2026-10-01T00:00:00.000Z' }, { ...clone(), updatedAt: '2026-10-17T00:00:00.000Z' })).toBe(true);
+		expect(
+			sameDocument(
+				{ ...base, updatedAt: '2026-10-01T00:00:00.000Z' },
+				{ ...clone(), updatedAt: '2026-10-17T00:00:00.000Z' },
+			),
+		).toBe(true);
 		expect(sameDocument({ ...base, updatedAt: '2026-10-01T00:00:00.000Z' }, clone())).toBe(true);
 	});
 
@@ -228,7 +238,11 @@ describe('sameDocument', () => {
 		['the title', (d: Record<string, unknown>) => (d.title = 'Y')],
 		['the publish date', (d: Record<string, unknown>) => (d.publishedAt = '2026-09-29T00:00:00.000Z')],
 		['the order of tags', (d: Record<string, unknown>) => (d.tags = ['b', 'a'])],
-		['an image', (d: Record<string, unknown>) => ((d.imageBlobs as Array<{ image: { ref: { $link: string } } }>)[0]!.image.ref.$link = 'bafkreitwo')],
+		[
+			'an image',
+			(d: Record<string, unknown>) =>
+				((d.imageBlobs as Array<{ image: { ref: { $link: string } } }>)[0]!.image.ref.$link = 'bafkreitwo'),
+		],
 		['an added field', (d: Record<string, unknown>) => (d.description = 'New.')],
 		['a removed field', (d: Record<string, unknown>) => delete d.tags],
 	])('is false when %s changed', (_change, change) => {

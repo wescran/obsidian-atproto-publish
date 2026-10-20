@@ -5,11 +5,7 @@ import { parseMarkdown } from './markdown.ts';
 
 const TEXT_BLOCKS = new Set(['heading', 'paragraph', 'code', 'tableCell']);
 
-/**
- * Plain-text version of a document, for standard.site's `textContent`: what
- * search indexes and readers that can't render Markdown use. Expects Markdown
- * that has already had its embeds replaced (see `replaceEmbeds`).
- */
+/** Plain text for `textContent`, from Markdown with embeds already replaced. */
 export function toPlainText(markdown: string): string {
 	const chunks: string[] = [];
 	visit(parseMarkdown(markdown), (node) => {

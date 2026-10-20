@@ -3,15 +3,15 @@ import { type App, PluginSettingTab, SecretComponent, Setting } from 'obsidian';
 import type AtprotoPublishPlugin from './main.ts';
 
 export interface PublishSettings {
-	/** Handle or DID to log in as. The PDS is found from it. */
+	/** Handle or DID to log in as. */
 	identifier: string;
-	/** Name of the SecretStorage entry holding the app password (never the password itself) */
+	/** Name of the SecretStorage entry holding the app password. */
 	passwordSecret: string;
-	/** Vault folder whose notes can be published as a site.standard.document record*/
+	/** Vault folder whose notes can be published. */
 	documentsFolder: string;
 	/** Document path, relative to the publication URL. Must contain {slug}. */
 	pathTemplate: string;
-	/** AT-URI of the site.standard.publication record. Its `url` is the site URL. */
+	/** AT-URI of the site.standard.publication record. */
 	publicationUri: string;
 }
 
@@ -49,7 +49,12 @@ export class PublishSettingTab extends PluginSettingTab {
 				}),
 			);
 
-		this.addText('Documents folder', 'Only notes in this folder can be published. Notes will be published as a site.standard.document record', 'documentsFolder', 'documents');
+		this.addText(
+			'Documents folder',
+			'Only notes in this folder can be published. Notes will be published as a site.standard.document record',
+			'documentsFolder',
+			'documents',
+		);
 		this.addText(
 			'Path template',
 			'Where documents live on your site. Must contain {slug}, e.g. /documents/{slug}.',

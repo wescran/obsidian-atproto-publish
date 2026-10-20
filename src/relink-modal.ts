@@ -1,18 +1,12 @@
 import { type App, Modal, Setting } from 'obsidian';
 
-/**
- * Asks whether to link a note that has no `atproto_uri` to the document,
- * named by its `title`, that already uses its slug and that no other note
- * links to (the note probably lost the link). Resolves `true` for
- * "Link and update", `false` for "Cancel" **or closing the dialog** (Escape,
- * clicking outside), and never resolves twice.
- */
+/** Asks whether to link this note to an unclaimed document with its slug. Closing means no. */
 export function confirmRelink(app: App, title: string): Promise<boolean> {
 	return new Promise((resolve) => new RelinkModal(app, title, resolve).open());
 }
 
 class RelinkModal extends Modal {
-	/** Set once a button decides the answer, so closing afterwards doesn't answer again. */
+	/** Clicking a button also closes the modal; this stops a second answer. */
 	private answered = false;
 
 	constructor(
@@ -42,7 +36,6 @@ class RelinkModal extends Modal {
 
 	override onClose(): void {
 		this.contentEl.empty();
-		// Escape, the close button, or a click outside: treat as "no".
 		this.answer(false);
 	}
 

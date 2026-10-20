@@ -16,6 +16,7 @@ document.
 npm install
 npm test             # vitest
 npm run typecheck
+npm run format       # prettier; `npm run format:check` to verify
 npm run build        # or `npm run dev` to rebuild on every change
 ```
 

@@ -37,7 +37,10 @@ describe.skipIf(!process.env.LIVE)('live: identity and publication', () => {
 	});
 
 	it('reads the publication from its PDS', async () => {
-		expect(await getPublication(publicClient(PDS), PUBLICATION)).toEqual({ url: 'https://cranlab.ca', name: 'CranLab' });
+		expect(await getPublication(publicClient(PDS), PUBLICATION)).toEqual({
+			url: 'https://cranlab.ca',
+			name: 'CranLab',
+		});
 	});
 });
 

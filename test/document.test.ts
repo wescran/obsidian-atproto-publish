@@ -90,7 +90,10 @@ describe('parseDocumentMeta: tags', () => {
 	});
 
 	it('drops empty, non-string and duplicate entries', () => {
-		expect(parseDocumentMeta({ title: 'X', tags: ['a', '', '#', 7, null, 'a', '#a', 'b'] }, 'x').tags).toEqual(['a', 'b']);
+		expect(parseDocumentMeta({ title: 'X', tags: ['a', '', '#', 7, null, 'a', '#a', 'b'] }, 'x').tags).toEqual([
+			'a',
+			'b',
+		]);
 	});
 
 	it('defaults to an empty list', () => {
@@ -126,7 +129,9 @@ describe('parseDocumentMeta: date', () => {
 	});
 
 	it('accepts a Date object', () => {
-		expect(parseDocumentMeta({ title: 'X', date: new Date('2026-09-28T00:00:00Z') }, 'x').date).toBe('2026-09-28T00:00:00.000Z');
+		expect(parseDocumentMeta({ title: 'X', date: new Date('2026-09-28T00:00:00Z') }, 'x').date).toBe(
+			'2026-09-28T00:00:00.000Z',
+		);
 	});
 
 	it('refuses a date it cannot read, quoting it', () => {

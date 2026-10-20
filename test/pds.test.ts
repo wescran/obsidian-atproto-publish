@@ -262,7 +262,12 @@ describe('deleteDocument', () => {
 		const pds = fakePds(() => ({ body: {} }));
 		await deleteDocument(pds.client, DID, RKEY, CID);
 		expect(pds.requests[0]).toMatchObject({ method: 'POST', nsid: 'com.atproto.repo.deleteRecord' });
-		expect(pds.requests[0]?.body).toEqual({ repo: DID, collection: 'site.standard.document', rkey: RKEY, swapRecord: CID });
+		expect(pds.requests[0]?.body).toEqual({
+			repo: DID,
+			collection: 'site.standard.document',
+			rkey: RKEY,
+			swapRecord: CID,
+		});
 	});
 
 	it('explains a failed swap', async () => {

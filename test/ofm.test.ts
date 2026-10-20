@@ -113,7 +113,8 @@ describe('toGfm: reporting', () => {
 	});
 
 	it('returns plain GFM unchanged, with no warnings', () => {
-		const markdown = '# Title\n\nSome **bold**, ~~strike~~, a [link](https://x.y).\n\n- [ ] task\n\n> [!tip] Callout\n> body';
+		const markdown =
+			'# Title\n\nSome **bold**, ~~strike~~, a [link](https://x.y).\n\n- [ ] task\n\n> [!tip] Callout\n> body';
 		expect(toGfm(markdown, strict)).toEqual({ markdown, warnings: [], hasMath: false });
 	});
 });

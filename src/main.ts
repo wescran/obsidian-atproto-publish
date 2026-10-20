@@ -1,4 +1,4 @@
-import { Plugin } from 'obsidian';
+import { Plugin, type TFile } from 'obsidian';
 
 import { Publisher } from './publisher.ts';
 import { DEFAULT_SETTINGS, type PublishSettings, PublishSettingTab } from './settings.ts';
@@ -12,28 +12,23 @@ export default class AtprotoPublishPlugin extends Plugin {
 		await this.loadSettings();
 		this.addSettingTab(new PublishSettingTab(this.app, this));
 
-		this.addCommand({
-			id: 'publish',
-			name: 'Publish document',
-			checkCallback: (checking) => {
-				const file = this.app.workspace.getActiveFile();
-				if (!this.publisher.canPublish(file)) return false;
-				if (!checking) void this.publisher.run(() => this.publisher.publish(file));
-				return true;
-			},
-		});
-		this.addCommand({
-			id: 'unpublish',
-			name: 'Unpublish document',
-			checkCallback: (checking) => {
-				const file = this.app.workspace.getActiveFile();
-				if (!this.publisher.canPublish(file)) return false;
-				if (!checking) void this.publisher.run(() => this.publisher.unpublish(file));
-				return true;
-			},
-		});
-
+		this.addDocumentCommand('publish', 'Publish document', (file) => this.publisher.publish(file));
+		this.addDocumentCommand('unpublish', 'Unpublish document', (file) => this.publisher.unpublish(file));
 		new StatusBar(this).register();
+	}
+
+	/** A command that's only available for notes in the documents folder. */
+	private addDocumentCommand(id: string, name: string, action: (file: TFile) => Promise<void>): void {
+		this.addCommand({
+			id,
+			name,
+			checkCallback: (checking) => {
+				const file = this.app.workspace.getActiveFile();
+				if (!this.publisher.canPublish(file)) return false;
+				if (!checking) void this.publisher.run(() => action(file));
+				return true;
+			},
+		});
 	}
 
 	async loadSettings(): Promise<void> {

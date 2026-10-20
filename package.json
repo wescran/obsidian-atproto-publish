@@ -1,42 +1,45 @@
 {
-  "name": "obsidian-atproto-publish",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Obsidian plugin that publishes notes as standard.site documents on an atproto PDS",
-  "type": "module",
-  "scripts": {
-    "dev": "node esbuild.config.mjs",
-    "build": "npm run typecheck && node esbuild.config.mjs production",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "lex:pull": "goat lex pull --update at.markpub.",
-    "lex:generate": "lex-cli generate"
-  },
-  "devDependencies": {
-    "@atcute/lex-cli": "^3.3.0",
-    "@standard-reader/renderer-core": "^0.4.0",
-    "@types/mdast": "^4.0.4",
-    "esbuild": "^0.28.2",
-    "obsidian": "^1.13.1",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
-  },
-  "dependencies": {
-    "@atcute/atproto": "^4.0.4",
-    "@atcute/cid": "^2.5.0",
-    "@atcute/client": "^5.1.2",
-    "@atcute/identity-resolver": "^2.0.3",
-    "@atcute/lexicons": "^2.1.1",
-    "@atcute/password-session": "^1.0.2",
-    "@atcute/standard-site": "^2.0.2",
-    "@atcute/tid": "^1.1.4",
-    "mdast-util-from-markdown": "^2.1.0",
-    "mdast-util-gfm": "^3.1.0",
-    "mdast-util-math": "^3.0.0",
-    "mdast-util-to-string": "^4.0.0",
-    "micromark-extension-gfm": "^3.0.0",
-    "micromark-extension-math": "^3.1.0",
-    "unist-util-visit": "^5.1.0"
-  }
+	"name": "obsidian-atproto-publish",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Obsidian plugin that publishes notes as standard.site documents on an atproto PDS",
+	"type": "module",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "npm run typecheck && node esbuild.config.mjs production",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "tsc --noEmit",
+		"lex:pull": "goat lex pull --update at.markpub.",
+		"lex:generate": "lex-cli generate",
+		"format": "prettier --write .",
+		"format:check": "prettier --check ."
+	},
+	"devDependencies": {
+		"@atcute/lex-cli": "^3.3.0",
+		"@standard-reader/renderer-core": "^0.4.0",
+		"@types/mdast": "^4.0.4",
+		"esbuild": "^0.28.2",
+		"obsidian": "^1.13.1",
+		"prettier": "^3.9.10",
+		"typescript": "^7.0.2",
+		"vitest": "^5.0.3"
+	},
+	"dependencies": {
+		"@atcute/atproto": "^4.0.4",
+		"@atcute/cid": "^2.5.0",
+		"@atcute/client": "^5.1.2",
+		"@atcute/identity-resolver": "^2.0.3",
+		"@atcute/lexicons": "^2.1.1",
+		"@atcute/password-session": "^1.0.2",
+		"@atcute/standard-site": "^2.0.2",
+		"@atcute/tid": "^1.1.4",
+		"mdast-util-from-markdown": "^2.1.0",
+		"mdast-util-gfm": "^3.1.0",
+		"mdast-util-math": "^3.0.0",
+		"mdast-util-to-string": "^4.0.0",
+		"micromark-extension-gfm": "^3.0.0",
+		"micromark-extension-math": "^3.1.0",
+		"unist-util-visit": "^5.1.0"
+	}
 }

@@ -3,15 +3,8 @@ import { type DocumentMeta, parseDocumentMeta, PublishError } from './document.t
 export type PublishStatus = 'draft' | 'published' | 'modified';
 
 /**
- * A fingerprint of what gets published from a note: SHA-256 (hex) of a
- * canonical JSON string of `{ title, description, tags, slug, date, cover, body }`.
- *
- * - Use Web Crypto (`crypto.subtle.digest('SHA-256', …)`): it exists in Node
- *   and in Obsidian, desktop and mobile.
- * - Canonical: fixed key order, absent values omitted, so the same content
- *   always gives the same hash however the object was built.
- * - `uri` and `publishedHash` are *not* included: writing them back to
- *   frontmatter after publishing must not make the note look edited.
+ * SHA-256 of what gets published from a note, in a fixed key order. Excludes
+ * `uri` and `publishedHash`, so writing them back doesn't look like an edit.
  */
 export async function fingerprint(meta: DocumentMeta, body: string): Promise<string> {
 	const record = {
@@ -21,20 +14,12 @@ export async function fingerprint(meta: DocumentMeta, body: string): Promise<str
 		slug: meta.slug,
 		date: meta.date,
 		cover: meta.cover,
-		body: body,
-	}
-	const msg = new TextEncoder().encode(JSON.stringify(record));
-	const hash = await crypto.subtle.digest('SHA-256', msg);
-	const hashArray = Array.from(new Uint8Array(hash));
-
-	return hashArray.map((byte) => byte.toString(16).padStart(2, '0')).join('');
+		body,
+	};
+	const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(record)));
+	return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * - No `meta.uri` → `draft`.
- * - `meta.publishedHash === currentHash` → `published`.
- * - Otherwise (edited since, or published before hashes existed) → `modified`.
- */
 export function publishStatus(meta: DocumentMeta, currentHash: string): PublishStatus {
 	if (!meta.uri) return 'draft';
 	if (meta.publishedHash === currentHash) return 'published';
@@ -42,18 +27,8 @@ export function publishStatus(meta: DocumentMeta, currentHash: string): PublishS
 }
 
 /**
- * The status of a note as it is now, for the status bar. Takes the note the
- * way `Publisher.readNote` returns it, so the fingerprint is computed exactly
- * as `publish()` computes it.
- *
- * - `parseDocumentMeta(frontmatter, basename)`, then
- *   `publishStatus(meta, await fingerprint(meta, body))`.
- * - The note can't be published as it is (`parseDocumentMeta` throws a
- *   `PublishError`: `draft: true`, a malformed property, …):
- *   - it has an `atproto_uri` (a non-blank string) → `modified`: the published
- *     version no longer matches the note.
- *   - otherwise → `draft`.
- * - Any other error is a bug: let it through.
+ * A note's current status. A note that can't be published as it is counts as
+ * `modified` if it has a record, otherwise `draft`.
  */
 export async function noteStatus(
 	frontmatter: Record<string, unknown> | undefined,
@@ -71,7 +46,6 @@ export async function noteStatus(
 	return publishStatus(docMeta, await fingerprint(docMeta, body));
 }
 
-/** The status bar text: `Draft`, `Published`, or `Published · edited` (a middle dot, U+00B7). */
 export function statusLabel(status: PublishStatus): string {
 	switch (status) {
 		case 'draft':

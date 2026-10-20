@@ -1,11 +1,9 @@
 /**
- * The "Publish document" and "Unpublish document" commands: reads the note,
- * talks to the PDS, and writes the result back to the note. The decisions
- * live in pure, tested modules (convert/*, publish-steps.ts, pds.ts); this
- * file only connects them to Obsidian, so it's checked by hand in a dev vault
- * (see the guide, Task 7).
+ * The publish and unpublish commands: Obsidian glue around the pure modules in
+ * convert/, publish-steps.ts and pds.ts.
  */
 import { ClientResponseError, type Client } from '@atcute/client';
+import type { Blob } from '@atcute/lexicons';
 import { now as newTid } from '@atcute/tid';
 import { type App, getFrontMatterInfo, MarkdownView, Notice, parseYaml, type TFile } from 'obsidian';
 
@@ -45,20 +43,18 @@ import {
 } from './publish-steps.ts';
 import { confirmRelink } from './relink-modal.ts';
 import { blobUrl, expandPath, joinUrl } from './urls.ts';
-import type { Blob } from '@atcute/lexicons';
 
 const ERROR_NOTICE_MS = 10_000;
 
-/** Everything the commands need about the note being published. */
 export interface Note {
 	file: TFile;
 	frontmatter: Record<string, unknown> | undefined;
-	/** The note's text after its frontmatter. */
+	/** Text after the frontmatter. */
 	body: string;
 }
 
 export class Publisher {
-	/** The logged-in session, kept in memory only, and reused while the handle doesn't change. */
+	/** In memory only; reused until the handle or app password setting changes. */
 	private session: { identifier: string; passwordSecret: string; account: Account; rpc: Client } | undefined;
 
 	constructor(private readonly plugin: AtprotoPublishPlugin) {}
@@ -67,7 +63,6 @@ export class Publisher {
 		return this.plugin.app;
 	}
 
-	/** Can the command run on this file? Used by the commands' `checkCallback`. */
 	canPublish(file: TFile | null): file is TFile {
 		return file !== null && file.extension === 'md' && isInFolder(file.path, this.plugin.settings.documentsFolder);
 	}
@@ -76,12 +71,7 @@ export class Publisher {
 		this.session = undefined;
 	}
 
-	/**
-	 * Runs a command and reports the outcome. A `PublishError` is shown as-is
-	 * (it's written for the author); anything else is unexpected: show
-	 * "Publishing failed: <message>" and `console.error` the error for
-	 * debugging.
-	 */
+	/** Runs a command, showing `PublishError`s as-is and logging anything else. */
 	async run(action: () => Promise<void>): Promise<void> {
 		try {
 			await action();
@@ -98,43 +88,13 @@ export class Publisher {
 	}
 
 	/**
-	 * "Publish document". In order (the order matters, see the guide):
-	 *
-	 * 1. `readNote(file)`; `parseDocumentMeta(frontmatter, file.basename)`;
-	 *    `path = expandPath(settings.pathTemplate, meta.slug)`.
-	 * 2. `login()`. Then the publication's site URL:
-	 *    `getPublication(publicClient(<the publication owner's PDS>), settings.publicationUri)`.
-	 *    The owner's PDS is your own when the publication URI's DID is your DID;
-	 *    otherwise `resolveAccount(<that DID>)` first.
-	 * 3. `listDocuments` → `checkPath(records, path, meta.uri, <another note links to it>)`:
-	 *    - `conflict` → `PublishError` naming the other document by its title,
-	 *      and the note linked to it when there is one.
-	 *    - `relink` → `confirmRelink(app, title)`; yes → use that `uri`, no → stop quietly.
-	 * 4. No `uri` yet → `rkey = newTid()`, `uri = documentUri(did, rkey)`, and
-	 *    **write `atproto_uri` and `slug` to the frontmatter now**
-	 *    (`app.fileManager.processFrontMatter`), before any write to the PDS.
-	 *    A failed or retried publish then reuses the same record key.
-	 * 5. `toGfm(body, { strictLineBreaks: this.strictLineBreaks() })`, keep its
-	 *    warnings and `hasMath`. `findEmbeds`; for each of `imageTargets(…)`:
-	 *    `resolve(target)`, `app.vault.readBinary`, `imageTypeOf`,
-	 *    `uploadImage` → remember `{ image: blob, alt }` and `blobUrl(pds, did, cid)`.
-	 *    Then `replaceEmbeds(markdown, (embed) => renderEmbed(embed, …).markdown)`,
-	 *    collecting warnings; links resolve to `joinUrl(siteUrl, expandPath(template, <their slug>))`
-	 *    when the linked note has an `atproto_uri` and a `slug`.
-	 *    `plainText = toPlainText(markdown)`.
-	 * 6. `meta.cover` → resolve, read, `imageTypeOf`, `checkCoverSize`, upload.
-	 * 7. `buildDocument` → `mergeForUpdate` → `putDocument(…, swapRecord: existing?.cid ?? null)`,
-	 *    skipped when `sameDocument` says nothing changed. (`getDocument` runs
-	 *    before step 5, so images the record already has are reused, not re-uploaded.)
-	 * 8. `markPublished` (via `processFrontMatter`) with the record's
-	 *    `publishedAt`, now, and `fingerprint(meta, body)` of the note **as read
-	 *    in step 1**. A `Notice` naming the note's title and the PDS's host
-	 *    (where the plugin actually put it), plus any warnings.
+	 * Order matters: `atproto_uri` is written to the note before anything is
+	 * written to the PDS, so a retried publish reuses the same record key.
 	 */
 	async publish(file: TFile): Promise<void> {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (view?.file === file) await view.save();
-		
+
 		const note = await this.readNote(file);
 		const docMeta = parseDocumentMeta(note.frontmatter, note.file.basename);
 		const filePath = expandPath(this.plugin.settings.pathTemplate, docMeta.slug);
@@ -163,21 +123,20 @@ export class Publisher {
 			docUri = documentUri(session.account.did, newTid());
 		}
 		await this.app.fileManager.processFrontMatter(file, (fm) => {
-			fm['atproto_uri'] = docUri;
-			fm['slug'] = docMeta.slug;
+			fm.atproto_uri = docUri;
+			fm.slug = docMeta.slug;
 		});
 
-		// Fetched before the images, so images already on the record aren't uploaded again. A record
-		// key generated just now can't have a record yet; anything else might (a republish, a re-link,
-		// or a retry after a failed publish).
+		// Fetched before uploading images so ones already on the record can be reused.
+		// A freshly generated key can't have a record yet.
 		const rkey = rkeyOf(docUri);
 		const existingDoc = isNew ? undefined : await getDocument(session.rpc, session.account.did, rkey);
 
-		const md = toGfm(note.body, {strictLineBreaks: this.strictLineBreaks()});
-		// Everything the author should know wasn't published as it looks in Obsidian; shown with the success notice.
+		const md = toGfm(note.body, { strictLineBreaks: this.strictLineBreaks() });
+		// Shown with the success notice: anything that won't look as it does in Obsidian.
 		const warnings: string[] = [...md.warnings];
 		const embeds = findEmbeds(md.markdown);
-		const uploads = new Map<string,{ blob: Blob; url: string}>(); 
+		const uploads = new Map<string, { blob: Blob; url: string }>();
 		for (const target of imageTargets(embeds)) {
 			const imageFile = this.resolve(target, file);
 			if (!imageFile) continue;
@@ -185,7 +144,7 @@ export class Publisher {
 			const imageType = imageTypeOf(target, imageBytes);
 			const upload = await this.uploadUnlessKept(session.rpc, imageBytes, imageType, existingDoc?.value);
 			const uploadUrl = blobUrl(session.account.pds, session.account.did, upload.ref.$link);
-			uploads.set(target, {blob: upload, url: uploadUrl});
+			uploads.set(target, { blob: upload, url: uploadUrl });
 		}
 		const replaced = replaceEmbeds(md.markdown, (embed) => {
 			const rendered = renderEmbed(embed, this.embedTarget(embed, file, uploads, publication.url));
@@ -209,7 +168,7 @@ export class Publisher {
 			meta: docMeta,
 			path: filePath,
 			markdown: replaced,
-			plainText: plainText,
+			plainText,
 			hasMath: md.hasMath,
 			publicationUri: this.plugin.settings.publicationUri,
 			images: [...uploads.values()].map(({ blob }) => ({ image: blob })),
@@ -222,12 +181,10 @@ export class Publisher {
 		if (!unchanged) {
 			await putDocument(session.rpc, session.account.did, rkey, mergedDoc, existingDoc?.cid ?? null);
 		}
-		// An unchanged record keeps its dates, so the note keeps saying when it really last changed.
+		// Skipping the write keeps the record's dates, so the note keeps them too.
 		const updatedAt = unchanged ? (existingDoc.value.updatedAt ?? existingDoc.value.publishedAt) : now;
 
-		// Only now that the record is written does the note say it's published. The hash is of the
-		// note as read at the start (what the author wrote), and is computed first because
-		// processFrontMatter's callback must be synchronous.
+		// Hash the note as read, not as rewritten; processFrontMatter's callback must be synchronous.
 		const hash = await fingerprint(docMeta, note.body);
 		await this.app.fileManager.processFrontMatter(file, (fm) => {
 			markPublished(fm, {
@@ -246,19 +203,11 @@ export class Publisher {
 		new Notice([outcome, ...warnings].join('\n'), warnings.length > 0 ? 15_000 : 5_000);
 	}
 
-	/**
-	 * "Unpublish document": the note must have an `atproto_uri`, otherwise
-	 * `PublishError` ("This note isn't published."). `login()`, `getDocument`
-	 * (already gone → just clear the frontmatter), `deleteDocument` with its
-	 * CID as `swapRecord`, `markUnpublished` via `processFrontMatter`, and a
-	 * `Notice` naming the note's title and the PDS's host.
-	 */
 	async unpublish(file: TFile): Promise<void> {
 		const note = await this.readNote(file);
-		// Only the link to the record matters here, not the publishing rules (see parseDocumentUri).
 		const uri = parseDocumentUri(note.frontmatter?.atproto_uri);
 		if (!uri) throw new PublishError("This note isn't published, so there's nothing to unpublish.");
-		// The same title rule as publishing, without refusing a note whose other properties are invalid.
+		// Same title rule as publishing, without validating the rest of the note.
 		const titleProperty = note.frontmatter?.title;
 		const title = typeof titleProperty === 'string' && titleProperty.trim() ? titleProperty.trim() : file.basename;
 
@@ -266,6 +215,7 @@ export class Publisher {
 
 		const rkey = rkeyOf(uri);
 		const existingDoc = await getDocument(session.rpc, session.account.did, rkey);
+		// Already gone: just clear the link.
 		if (existingDoc) {
 			await deleteDocument(session.rpc, session.account.did, rkey, existingDoc.cid);
 		}
@@ -277,9 +227,8 @@ export class Publisher {
 	}
 
 	/**
-	 * The note's properties (parsed from the file's own text, so they always
-	 * match the body) and the body after them. Also used by the status bar, so
-	 * both compute the same fingerprint. Broken YAML → `PublishError`.
+	 * Parses frontmatter from the file text itself so it always matches the body.
+	 * Shared with the status bar so both compute the same fingerprint.
 	 */
 	async readNote(file: TFile): Promise<Note> {
 		const text = await this.app.vault.read(file);
@@ -288,16 +237,14 @@ export class Publisher {
 		return { file, frontmatter, body: text.slice(info.contentStart) };
 	}
 
-	/**
-	 * The cached session, or a new one: `resolveAccount(settings.identifier)`,
-	 * the app password from `app.secretStorage.getSecret(settings.passwordSecret)`
-	 * (missing → `PublishError` pointing at the settings), then `connect`.
-	 * Start over if `settings.identifier` changed since the session was made.
-	 */
 	private async login(): Promise<{ account: Account; rpc: Client }> {
 		const settings = this.plugin.settings;
 		const identifier = settings.identifier;
-		if (!this.session || this.session.identifier !== identifier || this.session.passwordSecret !== settings.passwordSecret) {
+		if (
+			!this.session ||
+			this.session.identifier !== identifier ||
+			this.session.passwordSecret !== settings.passwordSecret
+		) {
 			if (identifier === '') throw new PublishError('Set your handle in Settings → ATproto Publish.');
 			if (settings.passwordSecret === '') {
 				throw new PublishError('Choose an app password in Settings → ATproto Publish.');
@@ -312,14 +259,10 @@ export class Publisher {
 			const rpc = await connect(account, identifier, password);
 			this.session = { account, identifier, passwordSecret: settings.passwordSecret, rpc };
 		}
-		return {account: this.session.account, rpc: this.session.rpc};
+		return { account: this.session.account, rpc: this.session.rpc };
 	}
 
-	/**
-	 * The blob for these bytes: the one already on the existing record when it
-	 * has the same CID, otherwise a fresh upload. Re-uploading bytes the PDS
-	 * already stores would only leave an orphaned temporary copy in its blob storage.
-	 */
+	/** Reuses a blob already on the record instead of uploading identical bytes again. */
 	private async uploadUnlessKept(
 		rpc: Client,
 		bytes: Uint8Array,
@@ -329,7 +272,7 @@ export class Publisher {
 		return reusableBlob(existing, await blobCid(bytes)) ?? (await uploadImage(rpc, bytes, mimeType));
 	}
 
-	/** The note, other than `except`, whose `atproto_uri` is this record, if any. */
+	/** The note, other than `except`, linked to this record. */
 	private linkedNote(uri: string, except: TFile): TFile | undefined {
 		return this.app.vault.getMarkdownFiles().find((candidate) => {
 			if (candidate === except) return false;
@@ -338,12 +281,11 @@ export class Publisher {
 		});
 	}
 
-	/** A vault file for a link or embed target, relative to `from`: `app.metadataCache.getFirstLinkpathDest(target, from.path)`. */
 	private resolve(target: string, from: TFile): TFile | null {
 		return this.app.metadataCache.getFirstLinkpathDest(target, from.path);
 	}
 
-	/** Where an embed should point, if anywhere: an uploaded image's blob URL, or a published note's page. */
+	/** An uploaded image's blob URL, or a published note's page. */
 	private embedTarget(
 		embed: Embed,
 		from: TFile,
@@ -354,12 +296,11 @@ export class Publisher {
 			case 'image':
 				return { url: uploads.get(embed.target)?.url };
 			case 'link': {
-				// The linked note, resolved the way Obsidian would from this note.
 				const linked = this.resolve(embed.target, from);
 				const fm: Record<string, unknown> | undefined = linked
 					? this.app.metadataCache.getFileCache(linked)?.frontmatter
 					: undefined;
-				// Only notes that are published (have a record) and have a pinned slug get a link.
+				// Only published notes with a pinned slug become links.
 				if (typeof fm?.atproto_uri !== 'string' || typeof fm.slug !== 'string') return {};
 				return { url: joinUrl(siteUrl, expandPath(this.plugin.settings.pathTemplate, fm.slug)) };
 			}
@@ -368,20 +309,12 @@ export class Publisher {
 		}
 	}
 
-	/**
-	 * Obsidian's "Strict line breaks" setting. Not in the public API types, so:
-	 * `(this.app.vault as unknown as { getConfig(key: string): unknown }).getConfig('strictLineBreaks') === true`.
-	 * Anything other than `true` means off, Obsidian's default.
-	 */
+	/** Obsidian's "Strict line breaks" setting, which isn't in the public API types. */
 	private strictLineBreaks(): boolean {
 		return (this.app.vault as unknown as { getConfig(key: string): unknown }).getConfig('strictLineBreaks') === true;
 	}
 }
 
-/**
- * The note's properties as an object, or undefined when there are none.
- * Broken YAML → a PublishError the author can act on.
- */
 function parseFrontmatter(yaml: string): Record<string, unknown> | undefined {
 	let parsed: unknown;
 	try {
@@ -392,8 +325,7 @@ function parseFrontmatter(yaml: string): Record<string, unknown> | undefined {
 			{ cause: error },
 		);
 	}
-	// An empty block parses to null, and a block containing only a list parses to an array:
-	// neither is a set of properties.
+	// An empty block parses to null, a bare list to an array.
 	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
 	return parsed as Record<string, unknown>;
 }

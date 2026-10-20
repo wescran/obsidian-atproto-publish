@@ -102,7 +102,9 @@ describe('noteStatus', () => {
 	});
 
 	it('is published right after publishing', async () => {
-		expect(await noteStatus(await published({ title: 'Welcome', tags: ['writing'] }), 'welcome', BODY)).toBe('published');
+		expect(await noteStatus(await published({ title: 'Welcome', tags: ['writing'] }), 'welcome', BODY)).toBe(
+			'published',
+		);
 	});
 
 	it('is published when the title comes from the file name', async () => {
@@ -110,7 +112,11 @@ describe('noteStatus', () => {
 	});
 
 	it('stays published when only properties outside the fingerprint change', async () => {
-		const frontmatter = { ...(await published({ title: 'Welcome' })), updated: '2026-10-17T00:00:00.000Z', aliases: ['hi'] };
+		const frontmatter = {
+			...(await published({ title: 'Welcome' })),
+			updated: '2026-10-17T00:00:00.000Z',
+			aliases: ['hi'],
+		};
 		expect(await noteStatus(frontmatter, 'welcome', BODY)).toBe('published');
 	});
 

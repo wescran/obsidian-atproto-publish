@@ -43,7 +43,9 @@ const NOTE = [
 
 function publish(note: string) {
 	const { markdown: gfm, hasMath } = toGfm(note, { strictLineBreaks: false });
-	const markdown = replaceEmbeds(gfm, (embed) => (embed.kind === 'image' ? `![${embed.alt}](${IMAGE_URL})` : embed.text));
+	const markdown = replaceEmbeds(gfm, (embed) =>
+		embed.kind === 'image' ? `![${embed.alt}](${IMAGE_URL})` : embed.text,
+	);
 	return buildDocument({
 		meta: { title: 'Compat', tags: [], slug: 'compat' },
 		path: '/compat',

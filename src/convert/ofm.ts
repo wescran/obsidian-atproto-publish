@@ -3,24 +3,20 @@ import { visit } from 'unist-util-visit';
 import { inRanges, parseMarkdown, verbatimRanges } from './markdown.ts';
 
 /**
- * Obsidian Flavored Markdown → GitHub Flavored Markdown, for the syntax that
- * isn't about other files (those are `findEmbeds`' job). Runs before
- * `replaceEmbeds`. Code, math and raw HTML are never touched.
- *
- * Callouts (`> [!note]`) are kept: standard.site readers render them.
- * See https://help.obsidian.md/obsidian-flavored-markdown
+ * Obsidian Flavored Markdown → GFM, except for embeds (see `findEmbeds`).
+ * Leaves code, math, raw HTML and callouts alone.
  */
 
 export interface GfmOptions {
-	/** Obsidian's "Strict line breaks" setting. Off (the default) means a single newline is a line break. */
+	/** Obsidian's "Strict line breaks" setting; off means every newline is a line break. */
 	strictLineBreaks: boolean;
 }
 
 export interface GfmResult {
 	markdown: string;
-	/** Things the author should know were not published as they look in Obsidian. */
+	/** Anything that won't look as it does in Obsidian. */
 	warnings: string[];
-	/** True when the document contains `$…$` or `$$…$$` math (declare the LaTeX extension). */
+	/** Whether the document contains math, so the LaTeX extension is declared. */
 	hasMath: boolean;
 }
 
@@ -44,7 +40,7 @@ export function toGfm(markdown: string, options: GfmOptions): GfmResult {
 	return { markdown: result, warnings, hasMath };
 }
 
-/** `%%comment%%`, inline or across lines. An unclosed `%%` hides the rest of the note, as in Obsidian. */
+/** `%%comment%%`; an unclosed `%%` hides the rest of the note, as in Obsidian. */
 function stripComments(markdown: string): string {
 	const skip = verbatimRanges(markdown);
 	let result = '';
@@ -61,10 +57,15 @@ function stripComments(markdown: string): string {
 
 /** ` ^block-id` at the end of a line, or alone on a line. */
 function stripBlockIds(markdown: string): string {
-	return replaceOutside(markdown, /(^|[ \t]+)\^[A-Za-z0-9-]+[ \t]*$/gm, (m) => m.index + (m[1]?.length ?? 0), () => '');
+	return replaceOutside(
+		markdown,
+		/(^|[ \t]+)\^[A-Za-z0-9-]+[ \t]*$/gm,
+		(m) => m.index + (m[1]?.length ?? 0),
+		() => '',
+	);
 }
 
-/** `==text==` and `==🔴text==`: Markdown has no highlight, so keep the text. */
+/** `==text==`: GFM has no highlight, so keep the text. */
 function stripHighlights(markdown: string): string {
 	return replaceOutside(
 		markdown,
@@ -76,10 +77,15 @@ function stripHighlights(markdown: string): string {
 
 /** `![alt|100](src)` / `![alt|100x145](src)`: the size isn't alt text. */
 function stripImageSizes(markdown: string): string {
-	return replaceOutside(markdown, /!\[([^\]\n]*?)\|\d+(?:x\d+)?\]\(/g, (m) => m.index, (m) => `![${m[1] ?? ''}](`);
+	return replaceOutside(
+		markdown,
+		/!\[([^\]\n]*?)\|\d+(?:x\d+)?\]\(/g,
+		(m) => m.index,
+		(m) => `![${m[1] ?? ''}](`,
+	);
 }
 
-/** Without strict line breaks, Obsidian shows every newline in a paragraph as a line break. */
+/** Makes each newline in a paragraph a hard break, as Obsidian displays it. */
 function hardenLineBreaks(markdown: string): string {
 	const tree = parseMarkdown(markdown);
 	const skip = verbatimRanges(markdown, tree);
@@ -124,7 +130,10 @@ function convertInlineFootnotes(markdown: string): string {
 		const close = matchingBracket(markdown, open + 1);
 		if (close === -1) break;
 		const id = `inline-${definitions.length + 1}`;
-		const body = markdown.slice(open + 2, close).trim().replace(/\n/g, '\n    ');
+		const body = markdown
+			.slice(open + 2, close)
+			.trim()
+			.replace(/\n/g, '\n    ');
 		definitions.push(`[^${id}]: ${body}`);
 		result += `${markdown.slice(from, open)}[^${id}]`;
 		from = close + 1;
@@ -154,10 +163,7 @@ function indexOutside(text: string, token: string, from: number, skip: Array<[nu
 	return -1;
 }
 
-/**
- * Like `String.replace` with a global regex, but leaves matches alone when the
- * offset given by `at` falls inside code, math or HTML.
- */
+/** `String.replace` that skips matches inside code, math or HTML. */
 function replaceOutside(
 	markdown: string,
 	pattern: RegExp,

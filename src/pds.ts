@@ -1,11 +1,4 @@
-/**
- * Everything that talks to the network: finding an account's PDS, reading the
- * publication, logging in, and reading/writing document records and blobs.
- *
- * Functions that take a `Client` are unit-tested against a fake PDS
- * (test/fake-pds.ts). `resolveAccount` and `connect` need the real network and
- * are covered by test/live.test.ts (opt-in).
- */
+/** Network access: identity resolution, login, and document and blob records. */
 import type {} from '@atcute/atproto'; // registers com.atproto.* types with Client
 import { Client, ClientResponseError, ok, simpleFetchHandler } from '@atcute/client';
 import {
@@ -38,11 +31,10 @@ export interface Account {
 	pds: string;
 }
 
-/** File extensions of the image types that can be uploaded. */
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif']);
 const UPLOADABLE_TYPES = 'PNG, JPEG, GIF, WebP or AVIF';
 
-/** Handle → DID (DNS or HTTPS), then DID → DID document (PLC or did:web), checked both ways. Stateless, so built once. */
+/** Resolves handles (DNS or HTTPS) and DIDs (PLC or did:web), verified both ways. */
 const actorResolver = new LocalActorResolver({
 	handleResolver: new CompositeHandleResolver({
 		methods: {
@@ -60,10 +52,9 @@ const actorResolver = new LocalActorResolver({
 
 const withoutTrailingSlash = (url: string): string => url.replace(/\/+$/, '');
 
-/** The bytes of an ASCII string, for file signatures that are readable text. */
 const ascii = (text: string): number[] => [...text].map((char) => char.charCodeAt(0));
 
-/** Image file signatures ("magic bytes"). See `detectImageType` for where each one appears. */
+/** Image file signatures ("magic bytes"); offsets are in `detectImageType`. */
 const SIGNATURES = {
 	png: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
 	jpeg: [0xff, 0xd8, 0xff],
@@ -76,18 +67,7 @@ const SIGNATURES = {
 	avis: ascii('avis'),
 } as const;
 
-/**
- * Handle (or DID) → DID and PDS.
- *
- * Use `LocalActorResolver` from `@atcute/identity-resolver`, with a
- * `CompositeHandleResolver` (DNS via `DohJsonHandleResolver`, e.g.
- * `https://mozilla.cloudflare-dns.com/dns-query`, plus
- * `WellKnownHandleResolver`) and a `CompositeDidDocumentResolver`
- * (`PlcDidDocumentResolver`, `WebDidDocumentResolver`). It verifies that the
- * handle and DID point at each other.
- *
- * Any failure → `PublishError` naming the identifier.
- */
+/** Handle or DID → DID and PDS. */
 export async function resolveAccount(identifier: string): Promise<Account> {
 	try {
 		const actor = await actorResolver.resolve(identifier as ActorIdentifier);
@@ -99,27 +79,25 @@ export async function resolveAccount(identifier: string): Promise<Account> {
 			throw new PublishError(`Couldn't look up "${identifier}". Check your internet connection.`, { cause: error });
 		}
 		if (cause instanceof DidNotFoundError) {
-			throw new PublishError(`There's no atproto account with the handle "${identifier}". Check "Handle" in the plugin settings.`, {
-				cause: error,
-			});
+			throw new PublishError(
+				`There's no atproto account with the handle "${identifier}". Check "Handle" in the plugin settings.`,
+				{
+					cause: error,
+				},
+			);
 		}
-		throw new PublishError(`Couldn't find the account "${identifier}". Check "Handle" in the plugin settings.`, { cause: error });
+		throw new PublishError(`Couldn't find the account "${identifier}". Check "Handle" in the plugin settings.`, {
+			cause: error,
+		});
 	}
 }
 
-/** An unauthenticated client for a PDS (`simpleFetchHandler`), for public reads. */
+/** An unauthenticated client for public reads. */
 export function publicClient(pds: string): Client {
 	return new Client({ handler: simpleFetchHandler({ service: pds }) });
 }
 
-/**
- * Logs in with an app password and returns an authenticated client
- * (`PasswordSession.login({ service: account.pds, identifier, password })`,
- * then `new Client({ handler: session })`). Keep the session in memory only.
- *
- * Wrong credentials (`AuthenticationRequired` and similar) → `PublishError`
- * telling the author to check the handle and app password in settings.
- */
+/** Logs in with an app password. The session is kept in memory only. */
 export async function connect(account: Account, identifier: string, password: string): Promise<Client> {
 	try {
 		const session = await PasswordSession.login({ service: account.pds, identifier, password });
@@ -129,14 +107,16 @@ export async function connect(account: Account, identifier: string, password: st
 	}
 }
 
-/** A message for every way logging in can fail. Never includes the password. */
+/** Never includes the password. */
 function loginError(error: unknown, identifier: string, pds: string): PublishError {
 	if (!(error instanceof ClientResponseError)) {
 		return new PublishError(`Couldn't reach ${new URL(pds).host}. Check your internet connection.`, { cause: error });
 	}
 	switch (error.error) {
 		case 'AuthenticationRequired':
-			return new PublishError(`Couldn't log in as ${identifier}: the handle or app password is wrong. Check them in the plugin settings.`);
+			return new PublishError(
+				`Couldn't log in as ${identifier}: the handle or app password is wrong. Check them in the plugin settings.`,
+			);
 		case 'AuthFactorTokenRequired':
 			return new PublishError(
 				`${identifier} has two-factor sign-in, so it needs an app password (Bluesky: Settings → Privacy and security → App passwords).`,
@@ -146,19 +126,13 @@ function loginError(error: unknown, identifier: string, pds: string): PublishErr
 		case 'RateLimitExceeded':
 			return new PublishError('Too many login attempts. Wait a few minutes, then try again.');
 		default:
-			return new PublishError(`Couldn't log in as ${identifier}: ${error.description ?? error.error}`, { cause: error });
+			return new PublishError(`Couldn't log in as ${identifier}: ${error.description ?? error.error}`, {
+				cause: error,
+			});
 	}
 }
 
-/**
- * Reads a `site.standard.publication` record (public `getRecord` on the
- * owner's PDS) and returns its URL, without a trailing slash, and name.
- *
- * - `uri` not shaped like `at://<did>/site.standard.publication/<rkey>` →
- *   `PublishError` mentioning "publication", without making a request.
- * - Record not found (`RecordNotFound`), or no `url` string on it →
- *   `PublishError` mentioning "publication".
- */
+/** A publication's URL (without a trailing slash) and name. */
 export async function getPublication(rpc: Client, uri: string): Promise<{ url: string; name: string }> {
 	const uriMatches = /^at:\/\/(did:[^/]+)\/site\.standard\.publication\/([^/]+)$/.exec(uri);
 	const [, repo, rkey] = uriMatches ?? [];
@@ -180,18 +154,14 @@ export async function getPublication(rpc: Client, uri: string): Promise<{ url: s
 
 	const { url, name } = response.data.value as { url?: unknown; name?: unknown };
 	if (typeof url !== 'string' || !url) {
-		throw new PublishError(`The publication ${uri} has no "url", so there's no site to publish to. Add one to the record.`);
+		throw new PublishError(
+			`The publication ${uri} has no "url", so there's no site to publish to. Add one to the record.`,
+		);
 	}
 	return { url: withoutTrailingSlash(url), name: typeof name === 'string' ? name : '' };
 }
 
-/**
- * Refuses a file whose extension isn't an uploadable image type (any case):
- * png, jpg/jpeg, gif, webp, avif. Anything else (including svg, and no
- * extension) → `PublishError` naming the file. The type to upload with comes
- * from the file's contents (`imageTypeOf`); this only stops obviously wrong
- * files early, with a clear message.
- */
+/** Refuses files without an uploadable image extension (SVG included). */
 export function checkImageExtension(path: string): void {
 	const ext = /\.([^./]+)$/.exec(path)?.[1] ?? '';
 	if (!IMAGE_EXTENSIONS.has(ext.toLowerCase())) {
@@ -200,17 +170,9 @@ export function checkImageExtension(path: string): void {
 }
 
 /**
- * The real image type of a file, from its first bytes ("magic bytes"), or
- * `undefined` if it isn't one of the six uploadable types. Never reads past
- * the end of a short file.
- *
- * | Type       | Signature                                                     |
- * |------------|---------------------------------------------------------------|
- * | image/png  | bytes 0–7: `89 50 4E 47 0D 0A 1A 0A`                           |
- * | image/jpeg | bytes 0–2: `FF D8 FF`                                          |
- * | image/gif  | bytes 0–5: ASCII `GIF87a` or `GIF89a`                          |
- * | image/webp | bytes 0–3: ASCII `RIFF`, and bytes 8–11: ASCII `WEBP`          |
- * | image/avif | bytes 4–7: ASCII `ftyp`, and bytes 8–11: ASCII `avif` or `avis` |
+ * The image type from a file's first bytes, or `undefined` if it isn't
+ * uploadable. WebP is `RIFF` + `WEBP` at byte 8; AVIF is `ftyp` at byte 4 +
+ * `avif`/`avis` at byte 8.
  */
 export function detectImageType(bytes: Uint8Array): string | undefined {
 	const matches = (offset: number, signature: readonly number[]) =>
@@ -225,14 +187,8 @@ export function detectImageType(bytes: Uint8Array): string | undefined {
 }
 
 /**
- * The MIME type to upload an image with, checking both its name and its
- * contents:
- * 1. `checkImageExtension(path)` first, so obviously wrong files (doc.pdf) are
- *    refused with a clear message before looking at their bytes.
- * 2. Then `detectImageType(bytes)`. If it's `undefined` (e.g. a HEIC photo
- *    renamed to .jpg) → `PublishError` naming the file.
- * 3. Return the *detected* type: the bytes are the truth when the extension
- *    is a different image type (a WebP saved as .png).
+ * The MIME type to upload with. Checks the extension first for a clear error,
+ * then trusts the bytes (a WebP saved as .png uploads as WebP).
  */
 export function imageTypeOf(path: string, bytes: Uint8Array): string {
 	checkImageExtension(path);
@@ -245,95 +201,68 @@ export function imageTypeOf(path: string, bytes: Uint8Array): string {
 	return imageType;
 }
 
-/** Cover images over `MAX_COVER_BYTES` → `PublishError` naming the file and the limit. */
 export function checkCoverSize(path: string, bytes: number): void {
 	if (bytes > MAX_COVER_BYTES) {
 		const megabytes = (bytes / 1_000_000).toFixed(1);
-		throw new PublishError(`The cover image "${path}" is ${megabytes} MB, but covers can be at most 1 MB. Use a smaller image.`);
+		throw new PublishError(
+			`The cover image "${path}" is ${megabytes} MB, but covers can be at most 1 MB. Use a smaller image.`,
+		);
 	}
 }
 
-/**
- * Uploads image bytes (`com.atproto.repo.uploadBlob`) and returns the blob
- * reference. The client sends no content type for binary input, so pass
- * `headers: { 'content-type': mimeType }` yourself.
- */
 export async function uploadImage(rpc: Client, bytes: Uint8Array, mimeType: string): Promise<Blob> {
 	const data = await ok(
 		rpc.post('com.atproto.repo.uploadBlob', {
 			input: bytes,
+			// The client sends no content type for binary input.
 			headers: { 'content-type': mimeType },
 		}),
 	);
 	return data.blob;
 }
 
-/**
- * `com.atproto.repo.getRecord` for one document.
- * Found → `{ value, cid }`. `RecordNotFound` → `undefined`. Other errors propagate.
- */
+/** A document and its CID, or `undefined` if it doesn't exist. */
 export async function getDocument(
 	rpc: Client,
 	did: Did,
 	rkey: string,
 ): Promise<{ value: DocumentRecord; cid: string } | undefined> {
 	const response = await rpc.get('com.atproto.repo.getRecord', {
-		params: {
-			repo: did,
-			collection: DOCUMENT_COLLECTION,
-			rkey: rkey,
-		}
+		params: { repo: did, collection: DOCUMENT_COLLECTION, rkey },
 	});
 	if (!response.ok) {
-		switch (response.data.error) {
-			case 'RecordNotFound':
-				return undefined;
-			default:
-				throw new ClientResponseError(response);
-		}
+		if (response.data.error === 'RecordNotFound') return undefined;
+		throw new ClientResponseError(response);
 	}
 	const cid = response.data.cid;
 	if (!cid) throw new Error(`The PDS returned ${response.data.uri} without a CID.`);
 
-	return {value: response.data.value as DocumentRecord, cid: cid};
+	return { value: response.data.value as DocumentRecord, cid };
 }
 
-/**
- * Every document in the repo (`com.atproto.repo.listRecords`, `limit: 100`),
- * following `cursor` until there is none.
- */
+/** Every document in the repo, following the cursor. */
 export async function listDocuments(
 	rpc: Client,
 	did: Did,
 ): Promise<Array<{ uri: string; cid: string; value: DocumentRecord }>> {
-	const docArray: Array<{ uri: string; cid: string; value: DocumentRecord }> = [];
+	const documents: Array<{ uri: string; cid: string; value: DocumentRecord }> = [];
 	let cursor: string | undefined;
 	do {
 		const response = await rpc.get('com.atproto.repo.listRecords', {
-			params: {
-				repo: did,
-				collection: DOCUMENT_COLLECTION,
-				limit: 100,
-				cursor: cursor,
-			}
+			params: { repo: did, collection: DOCUMENT_COLLECTION, limit: 100, cursor },
 		});
 		if (!response.ok) throw new ClientResponseError(response);
-		docArray.push(...response.data.records.map((r) => ({
-			uri: r.uri,
-			cid: r.cid,
-			value: r.value as DocumentRecord,
-		})));
+		for (const record of response.data.records) {
+			documents.push({ uri: record.uri, cid: record.cid, value: record.value as DocumentRecord });
+		}
 		cursor = response.data.cursor;
 	} while (cursor);
-
-	return docArray;
+	return documents;
 }
 
 /**
- * `com.atproto.repo.putRecord` with `validate: false` (PDSes don't know
- * site.standard.*). `swapRecord: null` means "must not exist yet"; a CID means
- * "must still be this version". A failed swap (`InvalidSwap`) → `PublishError`
- * telling the author the record changed on the PDS and to publish again.
+ * Writes a document with `validate: false`, since PDSes don't know
+ * site.standard.*. `swapRecord: null` means "must not exist yet".
  */
 export async function putDocument(
 	rpc: Client,
@@ -354,7 +283,6 @@ export async function putDocument(
 	}
 }
 
-/** `com.atproto.repo.deleteRecord` with `swapRecord`. `InvalidSwap` → same `PublishError` as `putDocument`. */
 export async function deleteDocument(rpc: Client, did: Did, rkey: string, swapRecord: string): Promise<void> {
 	try {
 		await ok(
@@ -367,14 +295,12 @@ export async function deleteDocument(rpc: Client, did: Did, rkey: string, swapRe
 	}
 }
 
-/**
- * A failed `swapRecord` means someone else changed the document between our
- * read and our write; that's for the author to retry. Anything else passes
- * through unchanged.
- */
+/** A failed swap means the record changed between our read and write. */
 function explainSwap(error: unknown, action: 'Publish' | 'Unpublish'): unknown {
 	if (error instanceof ClientResponseError && error.error === 'InvalidSwap') {
-		return new PublishError(`This document changed on your PDS while you were working on it. Run "${action} document" again.`);
+		return new PublishError(
+			`This document changed on your PDS while you were working on it. Run "${action} document" again.`,
+		);
 	}
 	return error;
 }

@@ -4,7 +4,13 @@ import { SiteStandardDocument } from '@atcute/standard-site';
 import { describe, expect, it } from 'vitest';
 
 import type { DocumentMeta } from '../src/convert/document.ts';
-import { type BuildInput, buildDocument, checkPath, type DocumentRecord, mergeForUpdate } from '../src/convert/record.ts';
+import {
+	type BuildInput,
+	buildDocument,
+	checkPath,
+	type DocumentRecord,
+	mergeForUpdate,
+} from '../src/convert/record.ts';
 
 const PUBLICATION = 'at://did:plc:a/site.standard.publication/p1';
 const NOW = '2026-10-07T12:00:00.000Z';
@@ -133,13 +139,16 @@ describe('mergeForUpdate', () => {
 	});
 
 	it('takes the content from next', () => {
-		const merged = mergeForUpdate(existing, buildDocument(input({ markdown: '# New', plainText: 'New' })), { now: NOW });
+		const merged = mergeForUpdate(existing, buildDocument(input({ markdown: '# New', plainText: 'New' })), {
+			now: NOW,
+		});
 		expect(merged.textContent).toBe('New');
 		expect(merged.content).toEqual(buildDocument(input({ markdown: '# New' })).content);
 	});
 
 	it('keeps fields the plugin does not own', () => {
-		const merged = mergeForUpdate(existing, buildDocument(input()), { now: NOW }) as DocumentRecord & Record<string, unknown>;
+		const merged = mergeForUpdate(existing, buildDocument(input()), { now: NOW }) as DocumentRecord &
+			Record<string, unknown>;
 		expect(merged.bskyPostRef).toEqual(existing.bskyPostRef);
 		expect(merged.labels).toEqual(existing.labels);
 		expect(merged['com.example.extra']).toEqual({ kept: true });
@@ -176,7 +185,9 @@ describe('checkPath', () => {
 
 	it('is ok when no record has the path', () => {
 		expect(checkPath(records, '/articles/new', undefined, unclaimed)).toEqual({ kind: 'ok' });
-		expect(checkPath(records, '/articles/new', 'at://did:plc:a/site.standard.document/9', unclaimed)).toEqual({ kind: 'ok' });
+		expect(checkPath(records, '/articles/new', 'at://did:plc:a/site.standard.document/9', unclaimed)).toEqual({
+			kind: 'ok',
+		});
 	});
 
 	it('is ok with no records at all', () => {
@@ -184,7 +195,11 @@ describe('checkPath', () => {
 	});
 
 	it('offers to re-link a note without a record when no note claims the existing one', () => {
-		expect(checkPath(records, '/articles/two', undefined, unclaimed)).toEqual({ kind: 'relink', uri: TWO, title: 'Two' });
+		expect(checkPath(records, '/articles/two', undefined, unclaimed)).toEqual({
+			kind: 'relink',
+			uri: TWO,
+			title: 'Two',
+		});
 	});
 
 	it('asks whether the existing record is claimed, by its URI', () => {
@@ -222,7 +237,15 @@ describe('checkPath', () => {
 			{ uri: TWO, value: { path: '/articles/two' } },
 			{ uri: ONE, value: { path: '/articles/one', title: '   ' } },
 		];
-		expect(checkPath(untitled, '/articles/two', undefined, unclaimed)).toEqual({ kind: 'relink', uri: TWO, title: '/articles/two' });
-		expect(checkPath(untitled, '/articles/one', undefined, unclaimed)).toEqual({ kind: 'relink', uri: ONE, title: '/articles/one' });
+		expect(checkPath(untitled, '/articles/two', undefined, unclaimed)).toEqual({
+			kind: 'relink',
+			uri: TWO,
+			title: '/articles/two',
+		});
+		expect(checkPath(untitled, '/articles/one', undefined, unclaimed)).toEqual({
+			kind: 'relink',
+			uri: ONE,
+			title: '/articles/one',
+		});
 	});
 });

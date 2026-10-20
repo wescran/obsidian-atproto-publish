@@ -1,11 +1,6 @@
 import { inRanges, verbatimRanges } from './markdown.ts';
 
-/**
- * Obsidian-only references that have to be rewritten before a note can be
- * published: local images get uploaded and replaced with their blob URL, links
- * to notes become normal links (or plain text), and other embedded files are
- * published as their name.
- */
+/** Finds and replaces references to vault files: images, note links and other embeds. */
 export type Embed =
 	| { kind: 'image'; target: string; alt: string; raw: string }
 	| { kind: 'link'; target: string; text: string; raw: string }
@@ -33,7 +28,7 @@ const IMAGE_FILE = /\.(?:png|jpe?g|gif|webp|avif|svg|bmp)$/i;
 const NOTE_FILE = /(?:^|\/)[^/.]+$|\.md$/i;
 // Obsidian uses `|300` / `|300x200` to size an image, not as alt text.
 const SIZE_ALIAS = /^\d+(?:x\d+)?$/;
-// Anything with a scheme (http:, data:, mailto:, …) or protocol-relative is not a vault file.
+// Anything with a scheme, or protocol-relative, isn't a vault file.
 const HAS_SCHEME = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 const OBSIDIAN_URI = /^obsidian:/i;
 
@@ -97,11 +92,7 @@ function wikilink(inner: string, raw: string): Embed {
 	return { kind: 'link', target, text: alias ?? path, raw };
 }
 
-/**
- * `[text](href)`: a link to a vault note (how Obsidian writes links with
- * "Use [[Wikilinks]]" turned off) or an `obsidian://` link. Web links and
- * same-page anchors are left alone.
- */
+/** `[text](href)` to a vault note or `obsidian://`. Web links and anchors are left alone. */
 function markdownLink(text: string, href: string, raw: string): Embed | undefined {
 	const bare = unwrap(href);
 	if (OBSIDIAN_URI.test(bare)) return { kind: 'link', target: '', text, raw };
@@ -110,10 +101,7 @@ function markdownLink(text: string, href: string, raw: string): Embed | undefine
 	return { kind: 'link', target, text, raw };
 }
 
-/**
- * Splits `target#sub|alias`. Inside a table Obsidian escapes the pipe as `\|`.
- * `path` keeps any `#heading` / `#^block` subpath; `target` is what to resolve.
- */
+/** Splits `target#sub|alias`; inside a table the pipe is escaped as `\|`. */
 function splitInner(inner: string): { path: string; target: string; alias: string | undefined } {
 	const bar = /\\?\|/.exec(inner);
 	const path = (bar ? inner.slice(0, bar.index) : inner).trim();
