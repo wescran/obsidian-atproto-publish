@@ -111,23 +111,35 @@ describe('mergeForUpdate', () => {
 
 	it('returns next unchanged for a first publish', () => {
 		const next = buildDocument(input());
-		expect(mergeForUpdate(undefined, next)).toEqual(next);
+		expect(mergeForUpdate(undefined, next, { now: NOW })).toEqual(next);
 	});
 
-	it('keeps publishedAt and sets updatedAt to now', () => {
-		const merged = mergeForUpdate(existing, buildDocument(input()));
+	it('keeps publishedAt and sets updatedAt to now when the note has no date', () => {
+		const merged = mergeForUpdate(existing, buildDocument(input()), { now: NOW });
 		expect(merged.publishedAt).toBe('2026-09-28T00:00:00.000Z');
 		expect(merged.updatedAt).toBe(NOW);
 	});
 
+	it('uses the note’s date for publishedAt when it has one, so a date can be added or corrected later', () => {
+		const date = '2026-09-01T00:00:00.000Z';
+		const merged = mergeForUpdate(existing, buildDocument(input({}, { date })), { now: NOW, date });
+		expect(merged.publishedAt).toBe(date);
+	});
+
+	it('sets updatedAt to now even when the note has a date', () => {
+		const date = '2026-09-01T00:00:00.000Z';
+		const merged = mergeForUpdate(existing, buildDocument(input({}, { date })), { now: NOW, date });
+		expect(merged.updatedAt).toBe(NOW);
+	});
+
 	it('takes the content from next', () => {
-		const merged = mergeForUpdate(existing, buildDocument(input({ markdown: '# New', plainText: 'New' })));
+		const merged = mergeForUpdate(existing, buildDocument(input({ markdown: '# New', plainText: 'New' })), { now: NOW });
 		expect(merged.textContent).toBe('New');
 		expect(merged.content).toEqual(buildDocument(input({ markdown: '# New' })).content);
 	});
 
 	it('keeps fields the plugin does not own', () => {
-		const merged = mergeForUpdate(existing, buildDocument(input())) as DocumentRecord & Record<string, unknown>;
+		const merged = mergeForUpdate(existing, buildDocument(input()), { now: NOW }) as DocumentRecord & Record<string, unknown>;
 		expect(merged.bskyPostRef).toEqual(existing.bskyPostRef);
 		expect(merged.labels).toEqual(existing.labels);
 		expect(merged['com.example.extra']).toEqual({ kept: true });
@@ -135,7 +147,7 @@ describe('mergeForUpdate', () => {
 
 	it('removes owned fields that next no longer has', () => {
 		const withImages = { ...existing, imageBlobs: [{ image: blob('old') }] };
-		const merged = mergeForUpdate(withImages, buildDocument(input()));
+		const merged = mergeForUpdate(withImages, buildDocument(input()), { now: NOW });
 		expect(merged).not.toHaveProperty('description');
 		expect(merged).not.toHaveProperty('imageBlobs');
 	});
@@ -143,7 +155,7 @@ describe('mergeForUpdate', () => {
 	it('does not modify its arguments', () => {
 		const next = buildDocument(input());
 		const before = structuredClone({ existing, next });
-		mergeForUpdate(existing, next);
+		mergeForUpdate(existing, next, { now: NOW });
 		expect({ existing, next }).toEqual(before);
 	});
 });

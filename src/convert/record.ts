@@ -102,17 +102,27 @@ export const OWNED_FIELDS = [
  * - Every other field on `existing` is kept: `bskyPostRef` (set by the site
  *   when it announces the document), `contributors`, `labels`, other apps'
  *   extension fields, …
- * - `publishedAt` stays the existing one; `updatedAt` becomes `next.publishedAt`
- *   (which is `now`, or the frontmatter date).
+ * - `publishedAt`: the note's `date` when it has one (so a date can be added
+ *   or corrected after the first publish), otherwise the existing one.
+ * - `updatedAt`: `now`.
  */
-export function mergeForUpdate(existing: DocumentRecord | undefined, next: DocumentRecord): DocumentRecord {
+export function mergeForUpdate(
+	existing: DocumentRecord | undefined,
+	next: DocumentRecord,
+	update: { now: string; date?: string },
+): DocumentRecord {
 	if (!existing) {
 		return next;
 	}
 	const owned = new Set<string>(OWNED_FIELDS);
 	const kept = Object.fromEntries(Object.entries(existing).filter(([key]) => !owned.has(key)));
 
-	return { ...kept, ...next, publishedAt: existing.publishedAt, updatedAt: next.publishedAt } as DocumentRecord;
+	return {
+		...kept,
+		...next,
+		publishedAt: update.date ?? existing.publishedAt,
+		updatedAt: update.now,
+	} as DocumentRecord;
 }
 
 export type PathCheck =

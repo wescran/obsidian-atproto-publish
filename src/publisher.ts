@@ -217,7 +217,7 @@ export class Publisher {
 			now,
 		});
 
-		const mergedDoc = mergeForUpdate(existingDoc?.value, nextDoc);
+		const mergedDoc = mergeForUpdate(existingDoc?.value, nextDoc, { now, date: docMeta.date });
 		const unchanged = existingDoc !== undefined && sameDocument(existingDoc.value, mergedDoc);
 		if (!unchanged) {
 			await putDocument(session.rpc, session.account.did, rkey, mergedDoc, existingDoc?.cid ?? null);
