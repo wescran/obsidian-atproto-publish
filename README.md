@@ -41,3 +41,7 @@ settings (`data.json`) stay in the vault's plugin folder, not in this repo.
 npm run lex:pull       # goat lex pull --update at.markpub.
 npm run lex:generate   # lex-cli generate
 ```
+
+## License
+
+MIT, see [LICENSE](LICENSE).
